@@ -28,6 +28,10 @@ export async function createProject(
   options: CreateProjectOptions = {}
 ): Promise<CreateProjectResult> {
   const project = sanitizeProjectName(requestedProject);
+  if (!config.vaultRootConfigured) {
+    throw new UserError('Vault root is not configured yet. Run "obsidian-project init" first.');
+  }
+
   if (!config.commonConfigured) {
     throw new UserError(
       'Common vault is not configured yet. Run "obsidian-project set-common" to select one or "obsidian-project create-common" to create one.'

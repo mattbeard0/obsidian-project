@@ -24,11 +24,20 @@ program
   .description('Manage isolated Obsidian project vaults and a scoped MCP server.')
   .version('0.1.0');
 
+program.action(async () => {
+  if (!input.isTTY || !output.isTTY) {
+    program.help();
+    return;
+  }
+
+  await configureProject();
+});
+
 program
   .command('init')
   .description('Create or replace obsidian-project global configuration.')
   .option('--vault-root <path>', 'Vault root directory')
-  .option('--common <name>', 'Common vault project name', 'common')
+  .option('--common <name>', 'Common vault project name')
   .option('--common-path <path>', 'Existing common vault folder')
   .option('--common-mode <mode>', 'Common vault setup: existing, create, or later')
   .option('--common-later', 'Configure vault root now and add the common vault later')
@@ -38,7 +47,7 @@ program
   .option('--if-missing', 'Do nothing when config already exists')
   .option('--yes', 'Use defaults for any missing answers')
   .action(async options => {
-    const config = await initConfig({
+    await configureProject({
       vaultRoot: options.vaultRoot,
       commonProjectName: options.common,
       commonMode: options.commonLater ? 'later' : options.commonMode,
@@ -49,14 +58,6 @@ program
       yes: options.yes,
       ifMissing: options.ifMissing
     });
-    const common = config.commonConfigured
-      ? config.commonVaultPath
-        ? await setCommonVault(config, { vaultPath: config.commonVaultPath, name: config.commonProjectName })
-        : await createCommonVault(config, { name: config.commonProjectName })
-      : undefined;
-    console.log(`Config written: ${configPath()}`);
-    console.log(`Vault root: ${config.vaultRoot}`);
-    console.log(`Common vault: ${common ? common.commonVaultPath : 'add later with "obsidian-project set-common" or "obsidian-project create-common"'}`);
   });
 
 program
@@ -258,4 +259,17 @@ async function confirm(question: string): Promise<string> {
   } finally {
     rl.close();
   }
+}
+
+async function configureProject(options: Parameters<typeof initConfig>[0] = {}): Promise<void> {
+  const config = await initConfig(options);
+  const common = config.commonConfigured
+    ? config.commonVaultPath
+      ? await setCommonVault(config, { vaultPath: config.commonVaultPath, name: config.commonProjectName })
+      : await createCommonVault(config, { name: config.commonProjectName })
+    : undefined;
+
+  console.log(`Config written: ${configPath()}`);
+  console.log(`Vault root: ${config.vaultRootConfigured ? config.vaultRoot : 'set up later with "obsidian-project"'}`);
+  console.log(`Common vault: ${common ? common.commonVaultPath : 'add later with "obsidian-project set-common" or "obsidian-project create-common"'}`);
 }

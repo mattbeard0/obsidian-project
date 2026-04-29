@@ -42,6 +42,7 @@ try {
   step('run installed CLI');
   assert(runCli(installed, ['--version']).trim() === require('../package.json').version, 'Installed CLI version mismatch.');
   assert(runCli(installed, ['--help']).includes('new [options] <project>'), 'Installed CLI help did not include expected command.');
+  assert(runCli(installed, []).includes('Usage: obsidian-project'), 'No-argument non-interactive CLI should show help.');
 
   step('initialize isolated config');
   runCli(installed, ['init', '--yes', '--vault-root', vaultRoot, '--common-later']);

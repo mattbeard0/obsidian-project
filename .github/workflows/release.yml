@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
@@ -54,14 +55,10 @@ jobs:
       - name: Publish stable release to npm latest
         if: ${{ github.event.release.prerelease == false }}
         run: npm publish --tag latest
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish prerelease to npm beta
         if: ${{ github.event.release.prerelease == true }}
         run: npm publish --tag beta
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Upload npm tarball to GitHub Release
         env:

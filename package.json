@@ -19,7 +19,6 @@
     "local:test": "npm run test:local",
     "postinstall": "node scripts/postinstall.cjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build && npm pack --dry-run",
-    "prepare": "npm run build",
     "test": "vitest run",
     "test:local": "npm run build && node scripts/local-smoke.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"

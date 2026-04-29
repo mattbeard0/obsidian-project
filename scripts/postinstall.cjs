@@ -3,7 +3,6 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const isGlobalInstall = process.env.npm_config_global === 'true' || process.env.npm_config_global === '1';
-const isInteractive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 const cli = path.resolve(__dirname, '..', 'dist', 'cli', 'index.js');
 
 if (process.env.OBSIDIAN_PROJECT_SKIP_POSTINSTALL === '1' || !isGlobalInstall || !fs.existsSync(cli)) {
@@ -22,16 +21,7 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-if (!isInteractive) {
-  process.stderr.write(
-    'Required CLIs found. obsidian-project installed. Rerun with "--foreground-scripts" for install-time configuration, or run "obsidian-project init".\n'
-  );
-  process.exit(0);
-}
-
-spawnSync(process.execPath, [cli, 'init', '--if-missing'], {
-  stdio: 'inherit'
-});
+process.exit(0);
 
 function printPrerequisiteHeader() {
   process.stderr.write('\nobsidian-project install prerequisites\n');

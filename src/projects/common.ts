@@ -57,6 +57,10 @@ export async function createCommonVault(
   config: AppConfig,
   options: CreateCommonVaultOptions = {}
 ): Promise<CommonVaultResult> {
+  if (!config.vaultRootConfigured) {
+    throw new UserError('Vault root is not configured yet. Run "obsidian-project init" first.');
+  }
+
   const commonProjectName = sanitizeProjectName(options.name ?? config.commonProjectName);
   const nextConfig = {
     ...config,

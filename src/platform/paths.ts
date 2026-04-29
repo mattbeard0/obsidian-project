@@ -26,7 +26,12 @@ export function stateDir(): string {
 }
 
 export function defaultVaultRoot(): string {
-  return path.join(os.homedir(), 'Knowledge');
+  if (process.platform === 'win32') {
+    const drive = path.parse(os.homedir()).root || 'C:\\';
+    return path.join(drive, 'Vaults');
+  }
+
+  return path.join(os.homedir(), 'Vaults');
 }
 
 export function configPath(): string {

@@ -42,23 +42,32 @@ gh auth status
 Install from npm:
 
 ```bash
-npm install -g obsidian-project-cli --foreground-scripts
+npm install -g obsidian-project-cli
 ```
 
-The installed command is `obsidian-project`.
+Then run the installed command to open the setup wizard:
+
+```bash
+obsidian-project
+```
 
 On Windows, npm creates an `obsidian-project.cmd` shim. On macOS, npm creates an `obsidian-project` executable on your global npm bin path.
 
-Global npm install is intentionally blocked until `obsidian version` and `gh --version` work. Use `--foreground-scripts` so npm shows the first-time configuration prompts during install.
+Global npm install is intentionally blocked until `obsidian version` and `gh --version` work.
 
 ## Configure
 
-The npm install runs the first-time config prompt when no config exists. It asks for:
+The setup wizard asks for:
 
-- vault root
+- vault root, using an arrow-key menu:
+  - default folder, `C:\Vaults` on Windows or `~/Vaults` on macOS/Linux
+  - choose a folder in the native picker
+  - set up later
 - repository prefix, default `obsidian-vault-`
-- common vault setup: use an existing folder, create a managed common vault, or add later
-- common vault folder, when using an existing vault
+- common vault setup, using an arrow-key menu:
+  - choose an existing common vault folder in the native picker
+  - create a managed common vault
+  - set up later
 - common vault project name, default `common`, when creating a managed vault
 - folder structure
 - optional GitHub owner/org
@@ -66,7 +75,7 @@ The npm install runs the first-time config prompt when no config exists. It asks
 You can rerun configuration later with:
 
 ```bash
-obsidian-project init
+obsidian-project
 ```
 
 Config is stored at:
@@ -111,7 +120,7 @@ obsidian-project set-common
 With no argument, `set-common` opens the native folder picker on Windows or macOS so you can select an existing common vault. You can also pass the full path directly:
 
 ```bash
-obsidian-project set-common "C:\Users\you\Vaults\Common"
+obsidian-project set-common "C:\Vaults\Common"
 ```
 
 To create the managed common vault under the configured vault root, run:
@@ -215,6 +224,7 @@ Release publishing is automated by `.github/workflows/release.yml`:
 
 - Stable GitHub Releases publish to npm with the `latest` dist-tag.
 - GitHub prereleases publish to npm with the `beta` dist-tag.
+- npm publishing uses Trusted Publishing/OIDC, so no `NPM_TOKEN` repository secret is required.
 - The workflow uploads the packed `.tgz` to the GitHub Release.
 - The workflow appends generated release notes listing included PRs and contributors.
 
