@@ -29,7 +29,7 @@ export async function loadConfig(): Promise<AppConfig> {
   try {
     raw = await fs.readFile(file, 'utf8');
   } catch {
-    throw new UserError(`obsidian-project is not configured. Run "obsidian-project init" first.`);
+    throw new UserError(`obsidian-project is not configured. Run "obsidian-project --init" first.`);
   }
 
   try {

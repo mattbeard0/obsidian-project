@@ -48,7 +48,7 @@ npm install -g obsidian-project-cli
 Then run the installed command to open the setup wizard:
 
 ```bash
-obsidian-project
+obsidian-project --init
 ```
 
 On Windows, npm creates an `obsidian-project.cmd` shim. On macOS, npm creates an `obsidian-project` executable on your global npm bin path.
@@ -56,6 +56,8 @@ On Windows, npm creates an `obsidian-project.cmd` shim. On macOS, npm creates an
 Global npm install is intentionally blocked until `obsidian version` and `gh --version` work.
 
 ## Configure
+
+Run `obsidian-project --help` to display all commands. Running `obsidian-project` with no command confirms the tool is installed and points to help.
 
 The setup wizard asks for:
 
@@ -75,7 +77,7 @@ The setup wizard asks for:
 You can rerun configuration later with:
 
 ```bash
-obsidian-project
+obsidian-project --init
 ```
 
 Config is stored at:
@@ -89,17 +91,17 @@ Older config files from previous versions are read once from the legacy location
 ## Use
 
 ```bash
-obsidian-project new XYZ
-obsidian-project set-common
-obsidian-project create-common
-obsidian-project delete XYZ
-obsidian-project list
-obsidian-project clean-up
-obsidian-project uninstall
-obsidian-project start
-obsidian-project stop
-obsidian-project status
-obsidian-project doctor
+obsidian-project --new XYZ
+obsidian-project --set-common
+obsidian-project --create-common
+obsidian-project --delete XYZ
+obsidian-project --list
+obsidian-project --clean-up
+obsidian-project --uninstall
+obsidian-project --start
+obsidian-project --stop
+obsidian-project --status
+obsidian-project --doctor
 ```
 
 `new XYZ` creates:
@@ -111,23 +113,23 @@ obsidian-project doctor
 - a Codex MCP server block with `x-obsidian-project = XYZ`
 - a Codex profile named `obsidian-vault-XYZ`
 
-If you chose to add the common vault later during `init`, run:
+If you chose to add the common vault later during setup, run:
 
 ```bash
-obsidian-project set-common
+obsidian-project --set-common
 ```
 
 With no argument, `set-common` opens the native folder picker on Windows or macOS so you can select an existing common vault. You can also pass the full path directly:
 
 ```bash
-obsidian-project set-common "C:\Vaults\Common"
+obsidian-project --set-common "C:\Vaults\Common"
 ```
 
 To create the managed common vault under the configured vault root, run:
 
 ```bash
-obsidian-project create-common
-obsidian-project create-common shared
+obsidian-project --create-common
+obsidian-project --create-common shared
 ```
 
 `create-common` creates the common vault folders and Git repo if they do not already exist, then saves it in config.
@@ -138,7 +140,7 @@ obsidian-project create-common shared
 
 `clean-up` removes generated Codex config blocks for project vaults that no longer exist locally, then refreshes existing project profiles into the current profile-scoped MCP format. It only removes blocks marked with `# BEGIN obsidian-project ...` / `# END obsidian-project ...`.
 
-`uninstall` removes generated Codex config blocks, deletes the obsidian-project app config/state folders, stops the MCP server if it is running, and runs `npm uninstall -g obsidian-project-cli`. It leaves vault folders, common mounts/symlinks, and Git repositories untouched. Use `obsidian-project uninstall --skip-package` to clean config without removing the npm package.
+`uninstall` removes generated Codex config blocks, deletes the obsidian-project app config/state folders, stops the MCP server if it is running, and runs `npm uninstall -g obsidian-project-cli`. It leaves vault folders, common mounts/symlinks, and Git repositories untouched. Use `obsidian-project --uninstall --skip-package` to clean config without removing the npm package.
 
 `start` launches a detached local MCP server on `127.0.0.1`, starting at port `57891` and scanning upward if needed. It confirms the GitHub CLI account on startup and updates generated Codex MCP URLs when the port changes.
 
