@@ -6,7 +6,7 @@ import { AppConfig } from '../config/schema.js';
 import { UserError } from '../errors.js';
 import { ensureGitRepo } from '../git/repo.js';
 import { chooseFolder } from '../platform/folderPicker.js';
-import { commonLayout } from '../vaults/layout.js';
+import { assertMissingOrEmptyDirectory, commonLayout } from '../vaults/layout.js';
 
 export interface SetCommonVaultOptions {
   vaultPath?: string;
@@ -39,11 +39,6 @@ export async function setCommonVault(config: AppConfig, options: SetCommonVaultO
     commonConfigured: true,
     commonVaultPath
   };
-  const common = commonLayout(nextConfig);
-  await fs.mkdir(common.rawPath, { recursive: true });
-  await fs.mkdir(common.wikiPath, { recursive: true });
-  await fs.mkdir(common.outputPath, { recursive: true });
-  await ensureGitRepo(common.vaultPath, 'Initialize common vault');
   await saveConfig(nextConfig);
 
   return {
@@ -69,16 +64,12 @@ export async function createCommonVault(
     commonVaultPath: undefined
   };
   const common = commonLayout(nextConfig);
-  let created = false;
-
-  try {
-    await fs.access(common.vaultPath);
-  } catch {
-    created = true;
-    await fs.mkdir(common.rawPath, { recursive: true });
-    await fs.mkdir(common.wikiPath, { recursive: true });
-    await fs.mkdir(common.outputPath, { recursive: true });
-  }
+  await assertMissingOrEmptyDirectory(common.vaultPath, 'Common vault');
+  const exists = await fs.stat(common.vaultPath).then(() => true).catch(() => false);
+  const created = !exists;
+  await fs.mkdir(common.rawPath, { recursive: true });
+  await fs.mkdir(common.wikiPath, { recursive: true });
+  await fs.mkdir(common.outputPath, { recursive: true });
 
   await ensureGitRepo(common.vaultPath, 'Initialize common vault');
 

@@ -1,6 +1,8 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
 
 import { AppConfig } from '../config/schema.js';
+import { UserError } from '../errors.js';
 
 export interface VaultLayout {
   project: string;
@@ -67,4 +69,20 @@ export function vaultLayout(config: AppConfig, project: string): VaultLayout {
     wikiPath: path.join(vaultPath, fs.wiki),
     outputPath: path.join(vaultPath, fs.output)
   };
+}
+
+export async function assertMissingOrEmptyDirectory(targetPath: string, label: string): Promise<void> {
+  const absolute = path.resolve(targetPath);
+  const stat = await fs.stat(absolute).catch(() => undefined);
+  if (!stat) {
+    return;
+  }
+  if (!stat.isDirectory()) {
+    throw new UserError(`${label} path exists and is not a directory: ${absolute}`);
+  }
+
+  const entries = await fs.readdir(absolute);
+  if (entries.length > 0) {
+    throw new UserError(`${label} path must be empty before creation: ${absolute}`);
+  }
 }

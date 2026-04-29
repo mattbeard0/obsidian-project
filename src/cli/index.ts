@@ -24,7 +24,7 @@ const packageJson = require('../../package.json') as { version: string };
 
 program
   .name('obsidian-project')
-  .description('Manage isolated Obsidian project vaults and a scoped MCP server.')
+  .description('Manage isolated Obsidian project vaults and a scoped MCP server. Use --commands (for example, --new, --delete, --list).')
   .version(packageJson.version)
   .showHelpAfterError()
   .option('--init', 'Open the setup wizard')
@@ -36,16 +36,16 @@ program
   .option('--repo-prefix <prefix>', 'Repository prefix for --init')
   .option('--github-owner <owner>', 'GitHub owner/org for remote creation')
   .option('--create-remotes', 'Create GitHub remotes by default')
-  .option('--new <project>', 'Create a new project vault')
-  .option('--github', 'Create/connect GitHub repositories using gh')
-  .option('--skip-github', 'Do not create GitHub repositories, even if configured by default')
-  .option('--delete <project>', 'Commit/push latest changes and delete the local project vault only')
+  .option('--new <project>', 'Create a new project vault; local Git repos are always created, GitHub remotes are optional')
+  .option('--github', 'With --new, create/connect GitHub repositories using gh')
+  .option('--skip-github', 'With --new, disable GitHub remote creation for this run')
+  .option('--delete <project>', 'Commit and push latest local changes (when possible), then delete only the local project vault')
   .option('--yes', 'Skip confirmation prompts')
   .option('--skip-push', 'Commit but do not push before deleting locally')
   .option('--set-common [path]', 'Select an existing common vault folder')
   .option('--create-common [name]', 'Create or reuse the managed common vault')
   .option('--list', 'List configured Obsidian project vaults and folders')
-  .option('--clean-up', 'Remove stale generated Codex config blocks')
+  .option('--clean-up', 'Remove stale generated Codex config blocks for projects no longer present locally')
   .option('--cleanup', 'Alias for --clean-up')
   .option('--uninstall', 'Remove obsidian-project config and uninstall the npm package')
   .option('--skip-package', 'With --uninstall, clean config only and keep the npm package')
@@ -57,206 +57,6 @@ program
 program.action(async () => {
   await dispatchTopLevelCommand(program.opts());
 });
-
-program
-  .command('init')
-  .description('Create or replace obsidian-project global configuration.')
-  .option('--vault-root <path>', 'Vault root directory')
-  .option('--common <name>', 'Common vault project name')
-  .option('--common-path <path>', 'Existing common vault folder')
-  .option('--common-mode <mode>', 'Common vault setup: existing, create, or later')
-  .option('--common-later', 'Configure vault root now and add the common vault later')
-  .option('--repo-prefix <prefix>', 'Repository prefix')
-  .option('--github-owner <owner>', 'GitHub owner/org for remote creation')
-  .option('--create-remotes', 'Create GitHub remotes by default')
-  .option('--if-missing', 'Do nothing when config already exists')
-  .option('--yes', 'Use defaults for any missing answers')
-  .action(async options => {
-    await configureProject({
-      vaultRoot: options.vaultRoot,
-      commonProjectName: options.common,
-      commonMode: options.commonLater ? 'later' : options.commonMode,
-      commonVaultPath: options.commonPath,
-      repoPrefix: options.repoPrefix,
-      githubOwner: options.githubOwner,
-      createRemotes: options.createRemotes,
-      yes: options.yes,
-      ifMissing: options.ifMissing
-    });
-  });
-
-program
-  .command('set-common')
-  .description('Select an existing common vault folder. Opens a folder picker when no path is provided.')
-  .argument('[path]', 'Full path to an existing common vault folder')
-  .action(async (vaultPath: string | undefined) => {
-    const config = await loadConfig();
-    const result = await setCommonVault(config, { vaultPath });
-    console.log(`Common vault configured: ${result.commonProjectName}`);
-    console.log(`Common vault path: ${result.commonVaultPath}`);
-  });
-
-program
-  .command('create-common')
-  .description('Create or reuse the managed common vault under the configured vault root.')
-  .argument('[name]', 'Common vault project name', 'common')
-  .action(async (name: string) => {
-    const config = await loadConfig();
-    const result = await createCommonVault(config, { name });
-    console.log(`Common vault configured: ${result.commonProjectName}`);
-    console.log(`Common vault path: ${result.commonVaultPath}`);
-    console.log(`Created folders: ${result.created ? 'yes' : 'already existed'}`);
-  });
-
-program
-  .command('new')
-  .description('Create a new project vault, repository, common mount, and Codex profile.')
-  .argument('<project>', 'Project name, e.g. project-1')
-  .option('--github', 'Create/connect GitHub repositories using gh')
-  .option('--skip-github', 'Do not create GitHub repositories, even if configured by default')
-  .action(async (project: string, options: { github?: boolean; skipGithub?: boolean }) => {
-    const config = await ensureConfig();
-    const createRemote = options.skipGithub ? false : options.github ? true : undefined;
-    const result = await createProject(config, project, { createRemote });
-    console.log(`Created project: ${result.project}`);
-    console.log(`Project vault: ${result.projectVaultPath}`);
-    console.log(`Common vault: ${result.commonVaultPath}`);
-    console.log(`Codex config updated: ${result.codexConfigPath}`);
-    console.log(`Codex profile: ${codexProfileName(config, result.project)}`);
-  });
-
-program
-  .command('delete')
-  .description('Commit/push latest project changes and delete the local project vault only.')
-  .argument('<project>', 'Project name')
-  .option('-y, --yes', 'Skip confirmation prompt')
-  .option('--skip-push', 'Commit but do not push before deleting locally')
-  .action(async (project: string, options: { yes?: boolean; skipPush?: boolean }) => {
-    const config = await loadConfig();
-    if (!options.yes) {
-      const confirmed = await confirm(`Delete local vault for "${project}" after committing and pushing latest changes? Type the project name to confirm`);
-      if (confirmed !== project) {
-        throw new UserError('Delete cancelled.');
-      }
-    }
-
-    const result = await deleteProject(config, project, { skipPush: options.skipPush });
-    console.log(`Deleted local vault: ${result.deletedPath}`);
-    console.log(`Committed latest changes: ${result.committed ? 'yes' : 'no changes'}`);
-    console.log(`Pushed to origin: ${result.pushed ? 'yes' : options.skipPush ? 'skipped' : 'no remote'}`);
-  });
-
-program
-  .command('list')
-  .description('List configured Obsidian project vaults and their folders.')
-  .action(async () => {
-    const config = await loadConfig();
-    const items = await listProjects(config);
-    if (items.length === 0) {
-      console.log('No obsidian-project vaults found.');
-      return;
-    }
-
-    for (const item of items) {
-      console.log(`${item.kind === 'common' ? 'Common' : 'Project'}: ${item.project}`);
-      console.log(`  Repo: ${item.repoName}`);
-      console.log(`  Vault: ${item.vaultPath}`);
-      for (const folder of item.folders) {
-        const state = folder.exists ? (folder.linked ? 'linked' : 'exists') : 'missing';
-        const target = folder.target ? ` -> ${folder.target}` : '';
-        console.log(`  - ${folder.label}: ${state} ${folder.path}${target}`);
-      }
-    }
-  });
-
-program
-  .command('clean-up')
-  .alias('cleanup')
-  .description('Remove generated Codex config blocks for project vaults that no longer exist.')
-  .action(async () => {
-    const config = await loadConfig();
-    const existingProjects = await existingProjectNameSet(config);
-    const result = await cleanupCodexProjectProfiles(config, existingProjects);
-    const state = await readServerState();
-    await refreshCodexProfilesForPort(config, state?.port ?? config.server.preferredPort);
-    console.log(`Codex config: ${result.configPath}`);
-    console.log(`Existing projects: ${existingProjects.size ? [...existingProjects].join(', ') : 'none'}`);
-    console.log(`Removed stale profiles: ${result.removedProjects.length ? result.removedProjects.join(', ') : 'none'}`);
-    console.log('Refreshed existing project profiles: yes');
-  });
-
-program
-  .command('uninstall')
-  .description('Remove obsidian-project Codex config and local app config, then uninstall the npm package.')
-  .option('-y, --yes', 'Skip confirmation prompt')
-  .option('--skip-package', 'Clean config only; do not run npm uninstall -g obsidian-project-cli')
-  .action(async (options: { yes?: boolean; skipPackage?: boolean }) => {
-    if (!options.yes) {
-      const confirmed = await confirm(
-        'Uninstall obsidian-project? This removes generated Codex config and obsidian-project app config, but leaves vaults, links, and Git repos untouched. Type "uninstall" to confirm'
-      );
-      if (confirmed !== 'uninstall') {
-        throw new UserError('Uninstall cancelled.');
-      }
-    }
-
-    const result = await uninstallProjectTool({ removePackage: !options.skipPackage });
-    console.log(`Codex config cleaned: ${result.codexConfigPath}`);
-    console.log(`Removed Codex profiles: ${result.removedCodexProjects.length ? result.removedCodexProjects.join(', ') : 'none'}`);
-    console.log(`Removed app config paths: ${result.removedPaths.length ? result.removedPaths.join(', ') : 'none'}`);
-    console.log(`MCP server stopped: ${result.serverStopped ? 'yes' : 'not running'}`);
-    console.log(`npm package removed: ${result.packageRemoved ? 'yes' : 'skipped'}`);
-    console.log('Vaults, common mounts, and Git repositories were left untouched.');
-  });
-
-program
-  .command('start')
-  .description('Start the persistent local MCP server.')
-  .action(async () => {
-    const config = await loadConfig();
-    const result = await startServer(config);
-    console.log(result.alreadyRunning ? 'MCP server already running.' : 'MCP server started.');
-    console.log(`URL: http://${result.state.host}:${result.state.port}/mcp`);
-    console.log(`PID: ${result.state.pid}`);
-    console.log(`Obsidian: ${result.obsidianVersion}`);
-    console.log(`GitHub account: ${result.account.login}${result.account.name ? ` (${result.account.name})` : ''}`);
-    console.log(`Log: ${serverLogPath()}`);
-  });
-
-program
-  .command('stop')
-  .description('Stop the persistent local MCP server.')
-  .action(async () => {
-    const stopped = await stopServer();
-    console.log(stopped ? 'MCP server stopped.' : 'MCP server is not running.');
-  });
-
-program
-  .command('status')
-  .description('Show MCP server status.')
-  .action(async () => {
-    const state = await readServerState();
-    if (!state) {
-      console.log('MCP server is not running.');
-      return;
-    }
-    console.log(`MCP server state: http://${state.host}:${state.port}/mcp`);
-    console.log(`PID: ${state.pid}`);
-    console.log(`Started: ${state.startedAt}`);
-  });
-
-program
-  .command('doctor')
-  .description('Check external dependencies.')
-  .action(async () => {
-    const config = await loadConfig();
-    const obsidianVersion = await assertObsidianCliReady();
-    const account = await assertGhReady();
-    console.log(`Config: ${configPath()}`);
-    console.log(`Vault root: ${config.vaultRoot}`);
-    console.log(`Obsidian CLI: ${obsidianVersion}`);
-    console.log(`GitHub CLI account: ${account.login}${account.name ? ` (${account.name})` : ''}`);
-  });
 
 program
   .command('serve', { hidden: true })

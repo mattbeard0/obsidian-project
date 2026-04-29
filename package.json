@@ -1,6 +1,6 @@
 {
   "name": "obsidian-project-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Cross-platform Obsidian vault project manager and scoped MCP server.",
   "type": "module",
   "packageManager": "npm@11.8.0",

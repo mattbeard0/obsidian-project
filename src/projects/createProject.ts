@@ -7,7 +7,7 @@ import { AppConfig } from '../config/schema.js';
 import { ensureGitRepo } from '../git/repo.js';
 import { createGitHubRepo } from '../github/gh.js';
 import { createCommonMount } from '../vaults/links.js';
-import { commonLayout, projectLayout } from '../vaults/layout.js';
+import { assertMissingOrEmptyDirectory, commonLayout, projectLayout } from '../vaults/layout.js';
 import { UserError } from '../errors.js';
 
 export interface CreateProjectOptions {
@@ -42,7 +42,8 @@ export async function createProject(
   const layout = projectLayout(config, project);
   const serverPort = options.serverPort ?? config.server.preferredPort;
 
-  await ensureVaultFolders(common.vaultPath, common.rawPath, common.wikiPath, common.outputPath);
+  await assertCommonVaultReady(common.vaultPath, common.wikiPath);
+  await assertMissingOrEmptyDirectory(layout.vaultPath, 'Project vault');
   await ensureVaultFolders(layout.vaultPath, layout.rawPath, layout.wikiPath, layout.outputPath, layout.projectWikiPath);
   await createCommonMount(layout.commonMountPath, common.wikiPath);
   await copyConfiguredCommonFiles(config, common.vaultPath, layout.vaultPath);
@@ -50,7 +51,6 @@ export async function createProject(
   await writeCodexInstructions(config, project);
   await ensureProjectGitignore(config, project);
 
-  await ensureGitRepo(common.vaultPath, 'Initialize common vault');
   await ensureGitRepo(layout.vaultPath, `Initialize ${layout.repoName}`);
 
   const shouldCreateRemote = options.createRemote ?? config.github.createRemotes;
@@ -86,6 +86,20 @@ export async function createProject(
 
 async function ensureVaultFolders(...folders: string[]): Promise<void> {
   await Promise.all(folders.map(folder => fs.mkdir(folder, { recursive: true })));
+}
+
+async function assertCommonVaultReady(commonVaultPath: string, commonWikiPath: string): Promise<void> {
+  const commonVault = await fs.stat(commonVaultPath).catch(() => undefined);
+  if (!commonVault?.isDirectory()) {
+    throw new UserError(`Common vault folder does not exist: ${commonVaultPath}`);
+  }
+
+  const commonWiki = await fs.stat(commonWikiPath).catch(() => undefined);
+  if (!commonWiki?.isDirectory()) {
+    throw new UserError(
+      `Common wiki folder does not exist: ${commonWikiPath}. Run "obsidian-project --create-common" or configure a valid common vault.`
+    );
+  }
 }
 
 async function writeProjectMetadata(config: AppConfig, project: string): Promise<void> {

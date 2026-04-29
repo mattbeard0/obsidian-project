@@ -104,14 +104,44 @@ obsidian-project --status
 obsidian-project --doctor
 ```
 
-`new XYZ` creates:
+Use the `--` form above as the canonical command style. Legacy subcommands may still exist for compatibility, but docs and examples only use `--` options.
 
-- `obsidian-vault-common` if needed
+`--new XYZ` creates:
+
 - `obsidian-vault-XYZ`
-- separate Git repos in both vaults
+- a local Git repo in that project vault
 - the common wiki mount at `obsidian-vault-XYZ/wiki/common`
 - a Codex MCP server block with `x-obsidian-project = XYZ`
-- a Codex profile named `obsidian-vault-XYZ`
+- a Codex profile named `XYZ`
+
+## GitHub Sync
+
+GitHub sync is optional and only runs when enabled.
+
+`obsidian-project --new XYZ`:
+
+- always creates local Git repositories for the project vault and common vault (if missing)
+- only creates or connects GitHub remotes when GitHub sync is enabled
+- uses the configured `githubOwner` and repository naming (`<repoPrefix><project>`, for example `obsidian-vault-project-1`)
+
+GitHub sync can be enabled:
+
+- by config default from setup (`createRemotes`)
+- per command with `--github`
+- disabled per command with `--skip-github`
+
+`obsidian-project --delete XYZ`:
+
+- commits local changes before delete when there are changes
+- pushes to `origin` before delete when a remote exists and push is not skipped
+- skips push with `--skip-push`
+- deletes only the local vault folder
+- does not delete any GitHub repository
+
+`obsidian-project --clean-up`:
+
+- updates/removes generated Codex MCP profile blocks for local vault state
+- does not create, delete, or mutate GitHub repositories
 
 If you chose to add the common vault later during setup, run:
 
@@ -119,7 +149,7 @@ If you chose to add the common vault later during setup, run:
 obsidian-project --set-common
 ```
 
-With no argument, `set-common` opens the native folder picker on Windows or macOS so you can select an existing common vault. You can also pass the full path directly:
+With no argument, `--set-common` opens the native folder picker on Windows or macOS so you can select an existing common vault. You can also pass the full path directly:
 
 ```bash
 obsidian-project --set-common "C:\Vaults\Common"
@@ -132,17 +162,17 @@ obsidian-project --create-common
 obsidian-project --create-common shared
 ```
 
-`create-common` creates the common vault folders and Git repo if they do not already exist, then saves it in config.
+`--create-common` creates the common vault folders and Git repo only when the target managed common-vault path is empty (or missing), then saves it in config.
 
-`delete XYZ` asks for confirmation, commits local project changes, pushes if an `origin` remote exists, and deletes only the local project vault. It does not delete the GitHub repository.
+`--delete XYZ` asks for confirmation, commits local project changes, pushes if an `origin` remote exists, and deletes only the local project vault. It does not delete the GitHub repository.
 
-`list` shows the common vault and each project vault, including the configured folder paths and linked common wiki mount.
+`--list` shows the common vault and each project vault, including the configured folder paths and linked common wiki mount.
 
-`clean-up` removes generated Codex config blocks for project vaults that no longer exist locally, then refreshes existing project profiles into the current profile-scoped MCP format. It only removes blocks marked with `# BEGIN obsidian-project ...` / `# END obsidian-project ...`.
+`--clean-up` removes generated Codex config blocks for project vaults that no longer exist locally, then refreshes existing project profiles into the current profile-scoped MCP format. It only removes blocks marked with `# BEGIN obsidian-project ...` / `# END obsidian-project ...`.
 
-`uninstall` removes generated Codex config blocks, deletes the obsidian-project app config/state folders, stops the MCP server if it is running, and runs `npm uninstall -g obsidian-project-cli`. It leaves vault folders, common mounts/symlinks, and Git repositories untouched. Use `obsidian-project --uninstall --skip-package` to clean config without removing the npm package.
+`--uninstall` removes generated Codex config blocks, deletes the obsidian-project app config/state folders, stops the MCP server if it is running, and runs `npm uninstall -g obsidian-project-cli`. It leaves vault folders, common mounts/symlinks, and Git repositories untouched. Use `obsidian-project --uninstall --skip-package` to clean config without removing the npm package.
 
-`start` launches a detached local MCP server on `127.0.0.1`, starting at port `57891` and scanning upward if needed. It confirms the GitHub CLI account on startup and updates generated Codex MCP URLs when the port changes.
+`--start` launches a detached local MCP server on `127.0.0.1`, starting at port `57891` and scanning upward if needed. It confirms the GitHub CLI account on startup and updates generated Codex MCP URLs when the port changes.
 
 ## MCP Scope
 
@@ -152,13 +182,13 @@ Project scope is supplied by the MCP request header:
 x-obsidian-project: XYZ
 ```
 
-Codex config blocks generated by `new` include that header:
+Codex config blocks generated by `--new` include that header:
 
 ```toml
-[profiles.obsidian-vault-XYZ]
+[profiles.XYZ]
 model_instructions_file = "..."
 
-[profiles.obsidian-vault-XYZ.mcp_servers.obsidianProject]
+[profiles.XYZ.mcp_servers.obsidian-notes]
 url = "http://127.0.0.1:57891/mcp"
 required = true
 http_headers = { "x-obsidian-project" = "XYZ" }

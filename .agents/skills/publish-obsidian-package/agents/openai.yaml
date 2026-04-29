@@ -1,0 +1,3 @@
+display_name: Publish Obsidian Package
+short_description: Release and verify obsidian-project-cli on npm.
+default_prompt: Publish the Obsidian package end to end.

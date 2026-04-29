@@ -15,8 +15,8 @@ describe('codex config generation', () => {
       vaultRoot: path.join(dir, 'knowledge'),
       codex: {
         configPath,
-        mcpServerNamePrefix: 'obsidianProject',
-        profileNamePrefix: 'obsidian-vault-'
+        mcpServerNamePrefix: 'obsidian-notes',
+        profileNamePrefix: ''
       }
     });
 
@@ -28,11 +28,11 @@ describe('codex config generation', () => {
     });
 
     const text = await fs.readFile(configPath, 'utf8');
-    expect(text).toContain('[profiles.obsidian-vault-project-1.mcp_servers.obsidianProject]');
+    expect(text).toContain('[profiles.project-1.mcp_servers.obsidian-notes]');
     expect(text).toContain('url = "http://127.0.0.1:57891/mcp"');
     expect(text).toContain('"x-obsidian-project" = "project-1"');
-    expect(text).toContain('[profiles.obsidian-vault-project-1]');
-    expect(codexMcpServerName(config, 'project-1')).toBe('obsidianProject');
-    expect(codexProfileName(config, 'project-1')).toBe('obsidian-vault-project-1');
+    expect(text).toContain('[profiles.project-1]');
+    expect(codexMcpServerName(config, 'project-1')).toBe('obsidian-notes');
+    expect(codexProfileName(config, 'project-1')).toBe('project-1');
   });
 });

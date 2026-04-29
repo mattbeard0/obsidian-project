@@ -48,12 +48,12 @@ export const appConfigSchema = z.object({
   codex: z
     .object({
       configPath: z.string().optional(),
-      mcpServerNamePrefix: z.string().min(1).default('obsidianProject'),
-      profileNamePrefix: z.string().min(1).default('obsidian-vault-')
+      mcpServerNamePrefix: z.string().min(1).default('obsidian-notes'),
+      profileNamePrefix: z.string().default('')
     })
     .default({
-      mcpServerNamePrefix: 'obsidianProject',
-      profileNamePrefix: 'obsidian-vault-'
+      mcpServerNamePrefix: 'obsidian-notes',
+      profileNamePrefix: ''
     })
 });
 

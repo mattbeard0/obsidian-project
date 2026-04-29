@@ -183,11 +183,11 @@ function replaceMarkedBlock(current: string, project: string, block: string): st
 }
 
 export function codexMcpServerName(config: AppConfig, project: string): string {
-  return config.codex.mcpServerNamePrefix;
+  return 'obsidian-notes';
 }
 
 export function codexProfileName(config: AppConfig, project: string): string {
-  return `${config.codex.profileNamePrefix}${project}`;
+  return project;
 }
 
 function tomlBareKey(value: string): string {

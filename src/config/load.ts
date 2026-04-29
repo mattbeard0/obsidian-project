@@ -141,8 +141,8 @@ export async function initConfig(options: InitOptions = {}): Promise<AppConfig> 
       },
       codex: {
         configPath: existing?.codex.configPath,
-        mcpServerNamePrefix: existing?.codex.mcpServerNamePrefix ?? 'obsidianProject',
-        profileNamePrefix: existing?.codex.profileNamePrefix ?? 'obsidian-vault-'
+        mcpServerNamePrefix: 'obsidian-notes',
+        profileNamePrefix: ''
       }
     });
 

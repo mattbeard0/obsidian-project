@@ -43,7 +43,7 @@ try {
 
   step('run installed CLI');
   assert(runCli(installed, ['--version']).trim() === require('../package.json').version, 'Installed CLI version mismatch.');
-  assert(runCli(installed, ['--help']).includes('new [options] <project>'), 'Installed CLI help did not include expected command.');
+  assert(runCli(installed, ['--help']).includes('--new <project>'), 'Installed CLI help did not include expected option command.');
   const noArgs = runCli(installed, []);
   assert(noArgs.includes('obsidian-project is installed.'), 'No-argument CLI should report installed status.');
   assert(noArgs.includes('obsidian-project --help'), 'No-argument CLI should point to --help.');
@@ -94,9 +94,9 @@ try {
   assert(listOutput.includes('wiki/common:'), 'Expected list output to include the linked common wiki folder.');
 
   const codexText = fs.readFileSync(codexConfig, 'utf8');
-  assert(codexText.includes('[profiles.obsidian-vault-project-1.mcp_servers.obsidianProject]'), 'Codex MCP server block missing.');
+  assert(codexText.includes('[profiles.project-1.mcp_servers.obsidian-notes]'), 'Codex MCP server block missing.');
   assert(codexText.includes('"x-obsidian-project" = "project-1"'), 'Codex project header missing.');
-  assert(codexText.includes('[profiles.obsidian-vault-project-1]'), 'Codex profile block missing.');
+  assert(codexText.includes('[profiles.project-1]'), 'Codex profile block missing.');
 
   step('show local status command');
   assert(runCli(installed, ['--status']).includes('MCP server is not running.'), 'Expected status to report stopped server.');
@@ -110,8 +110,8 @@ try {
   const cleanupOutput = runCli(installed, ['--clean-up']);
   assert(cleanupOutput.includes(`Removed stale profiles: ${projectName}`), 'Expected cleanup to remove the deleted project profile.');
   const cleanedCodexText = fs.readFileSync(codexConfig, 'utf8');
-  assert(!cleanedCodexText.includes('[profiles.obsidian-vault-project-1.mcp_servers.obsidianProject]'), 'Codex MCP server block should be removed.');
-  assert(!cleanedCodexText.includes('[profiles.obsidian-vault-project-1]'), 'Codex profile block should be removed.');
+  assert(!cleanedCodexText.includes('[profiles.project-1.mcp_servers.obsidian-notes]'), 'Codex MCP server block should be removed.');
+  assert(!cleanedCodexText.includes('[profiles.project-1]'), 'Codex profile block should be removed.');
 
   step('external dependency probe');
   const doctor = spawn(process.execPath, [installed.script, '--doctor']);
