@@ -4,6 +4,10 @@
   "description": "Cross-platform Obsidian vault project manager and scoped MCP server.",
   "type": "module",
   "packageManager": "npm@11.8.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mattbeard0/obsidian-project.git"
+  },
   "bin": {
     "obsidian-project": "dist/cli/index.js"
   },
@@ -48,10 +52,5 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "homepage": "https://github.com/mattbeard0/obsidian-project#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/mattbeard0/obsidian-project.git"
   }
 }
