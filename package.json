@@ -48,5 +48,10 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "homepage": "https://github.com/mattbeard0/obsidian-project#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mattbeard0/obsidian-project.git"
   }
 }
