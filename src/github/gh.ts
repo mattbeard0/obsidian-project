@@ -63,3 +63,16 @@ export async function createPullRequest(cwd: string, title: string, body: string
 
   return result.stdout.trim();
 }
+
+export async function findPullRequestForBranch(cwd: string, branch: string): Promise<string | undefined> {
+  const result = await runCommand('gh', ['pr', 'view', branch, '--json', 'url', '--jq', '.url'], {
+    cwd,
+    timeoutMs: 30_000
+  });
+
+  if (result.code !== 0) {
+    return undefined;
+  }
+
+  return result.stdout.trim() || undefined;
+}

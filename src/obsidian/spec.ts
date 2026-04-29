@@ -131,5 +131,5 @@ export const obsidianCommandSpecs = specs;
 export const obsidianCommandMap = new Map(specs.map(spec => [spec.command, spec]));
 
 export function toolNameForObsidianCommand(command: string): string {
-  return `obsidian_${command.replace(/[:]/g, '_').replace(/[^a-zA-Z0-9_]/g, '_')}`;
+  return command.replace(/[:]/g, '_').replace(/[^a-zA-Z0-9_]/g, '_');
 }

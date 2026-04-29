@@ -3,13 +3,16 @@ import { Command } from 'commander';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
-import { codexProfileName } from '../codex/config.js';
+import { cleanupCodexProjectProfiles, codexProfileName, refreshCodexProfilesForPort } from '../codex/config.js';
 import { ensureConfig, initConfig, loadConfig } from '../config/load.js';
 import { errorMessage, UserError } from '../errors.js';
 import { assertGhReady } from '../github/gh.js';
 import { assertObsidianCliReady } from '../obsidian/cli.js';
+import { createCommonVault, setCommonVault } from '../projects/common.js';
 import { createProject } from '../projects/createProject.js';
 import { deleteProject } from '../projects/deleteProject.js';
+import { existingProjectNameSet, listProjects } from '../projects/list.js';
+import { uninstallProjectTool } from '../projects/uninstall.js';
 import { readServerState, startServer, stopServer } from '../server/lifecycle.js';
 import { runMcpHttpServer } from '../server/http.js';
 import { configPath, serverLogPath } from '../platform/paths.js';
@@ -26,6 +29,9 @@ program
   .description('Create or replace obsidian-project global configuration.')
   .option('--vault-root <path>', 'Vault root directory')
   .option('--common <name>', 'Common vault project name', 'common')
+  .option('--common-path <path>', 'Existing common vault folder')
+  .option('--common-mode <mode>', 'Common vault setup: existing, create, or later')
+  .option('--common-later', 'Configure vault root now and add the common vault later')
   .option('--repo-prefix <prefix>', 'Repository prefix', 'obsidian-vault-')
   .option('--github-owner <owner>', 'GitHub owner/org for remote creation')
   .option('--create-remotes', 'Create GitHub remotes by default')
@@ -35,14 +41,45 @@ program
     const config = await initConfig({
       vaultRoot: options.vaultRoot,
       commonProjectName: options.common,
+      commonMode: options.commonLater ? 'later' : options.commonMode,
+      commonVaultPath: options.commonPath,
       repoPrefix: options.repoPrefix,
       githubOwner: options.githubOwner,
       createRemotes: options.createRemotes,
       yes: options.yes,
       ifMissing: options.ifMissing
     });
+    const common = config.commonConfigured
+      ? config.commonVaultPath
+        ? await setCommonVault(config, { vaultPath: config.commonVaultPath, name: config.commonProjectName })
+        : await createCommonVault(config, { name: config.commonProjectName })
+      : undefined;
     console.log(`Config written: ${configPath()}`);
     console.log(`Vault root: ${config.vaultRoot}`);
+    console.log(`Common vault: ${common ? common.commonVaultPath : 'add later with "obsidian-project set-common" or "obsidian-project create-common"'}`);
+  });
+
+program
+  .command('set-common')
+  .description('Select an existing common vault folder. Opens a folder picker when no path is provided.')
+  .argument('[path]', 'Full path to an existing common vault folder')
+  .action(async (vaultPath: string | undefined) => {
+    const config = await loadConfig();
+    const result = await setCommonVault(config, { vaultPath });
+    console.log(`Common vault configured: ${result.commonProjectName}`);
+    console.log(`Common vault path: ${result.commonVaultPath}`);
+  });
+
+program
+  .command('create-common')
+  .description('Create or reuse the managed common vault under the configured vault root.')
+  .argument('[name]', 'Common vault project name', 'common')
+  .action(async (name: string) => {
+    const config = await loadConfig();
+    const result = await createCommonVault(config, { name });
+    console.log(`Common vault configured: ${result.commonProjectName}`);
+    console.log(`Common vault path: ${result.commonVaultPath}`);
+    console.log(`Created folders: ${result.created ? 'yes' : 'already existed'}`);
   });
 
 program
@@ -81,6 +118,69 @@ program
     console.log(`Deleted local vault: ${result.deletedPath}`);
     console.log(`Committed latest changes: ${result.committed ? 'yes' : 'no changes'}`);
     console.log(`Pushed to origin: ${result.pushed ? 'yes' : options.skipPush ? 'skipped' : 'no remote'}`);
+  });
+
+program
+  .command('list')
+  .description('List configured Obsidian project vaults and their folders.')
+  .action(async () => {
+    const config = await loadConfig();
+    const items = await listProjects(config);
+    if (items.length === 0) {
+      console.log('No obsidian-project vaults found.');
+      return;
+    }
+
+    for (const item of items) {
+      console.log(`${item.kind === 'common' ? 'Common' : 'Project'}: ${item.project}`);
+      console.log(`  Repo: ${item.repoName}`);
+      console.log(`  Vault: ${item.vaultPath}`);
+      for (const folder of item.folders) {
+        const state = folder.exists ? (folder.linked ? 'linked' : 'exists') : 'missing';
+        const target = folder.target ? ` -> ${folder.target}` : '';
+        console.log(`  - ${folder.label}: ${state} ${folder.path}${target}`);
+      }
+    }
+  });
+
+program
+  .command('clean-up')
+  .alias('cleanup')
+  .description('Remove generated Codex config blocks for project vaults that no longer exist.')
+  .action(async () => {
+    const config = await loadConfig();
+    const existingProjects = await existingProjectNameSet(config);
+    const result = await cleanupCodexProjectProfiles(config, existingProjects);
+    const state = await readServerState();
+    await refreshCodexProfilesForPort(config, state?.port ?? config.server.preferredPort);
+    console.log(`Codex config: ${result.configPath}`);
+    console.log(`Existing projects: ${existingProjects.size ? [...existingProjects].join(', ') : 'none'}`);
+    console.log(`Removed stale profiles: ${result.removedProjects.length ? result.removedProjects.join(', ') : 'none'}`);
+    console.log('Refreshed existing project profiles: yes');
+  });
+
+program
+  .command('uninstall')
+  .description('Remove obsidian-project Codex config and local app config, then uninstall the npm package.')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .option('--skip-package', 'Clean config only; do not run npm uninstall -g obsidian-project-cli')
+  .action(async (options: { yes?: boolean; skipPackage?: boolean }) => {
+    if (!options.yes) {
+      const confirmed = await confirm(
+        'Uninstall obsidian-project? This removes generated Codex config and obsidian-project app config, but leaves vaults, links, and Git repos untouched. Type "uninstall" to confirm'
+      );
+      if (confirmed !== 'uninstall') {
+        throw new UserError('Uninstall cancelled.');
+      }
+    }
+
+    const result = await uninstallProjectTool({ removePackage: !options.skipPackage });
+    console.log(`Codex config cleaned: ${result.codexConfigPath}`);
+    console.log(`Removed Codex profiles: ${result.removedCodexProjects.length ? result.removedCodexProjects.join(', ') : 'none'}`);
+    console.log(`Removed app config paths: ${result.removedPaths.length ? result.removedPaths.join(', ') : 'none'}`);
+    console.log(`MCP server stopped: ${result.serverStopped ? 'yes' : 'not running'}`);
+    console.log(`npm package removed: ${result.packageRemoved ? 'yes' : 'skipped'}`);
+    console.log('Vaults, common mounts, and Git repositories were left untouched.');
   });
 
 program

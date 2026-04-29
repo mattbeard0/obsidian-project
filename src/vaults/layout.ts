@@ -23,7 +23,22 @@ export function repoNameForProject(config: AppConfig, project: string): string {
 }
 
 export function commonLayout(config: AppConfig): VaultLayout {
-  return vaultLayout(config, config.commonProjectName);
+  if (!config.commonVaultPath) {
+    return vaultLayout(config, config.commonProjectName);
+  }
+
+  const repoName = repoNameForProject(config, config.commonProjectName);
+  const vaultPath = path.resolve(config.commonVaultPath);
+  const fs = config.folderStructure;
+
+  return {
+    project: config.commonProjectName,
+    repoName,
+    vaultPath,
+    rawPath: path.join(vaultPath, fs.raw),
+    wikiPath: path.join(vaultPath, fs.wiki),
+    outputPath: path.join(vaultPath, fs.output)
+  };
 }
 
 export function projectLayout(config: AppConfig, project: string): ProjectVaultLayout {

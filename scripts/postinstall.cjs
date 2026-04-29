@@ -24,7 +24,7 @@ if (missing.length > 0) {
 
 if (!isInteractive) {
   process.stderr.write(
-    'Required CLIs found. obsidian-project installed. Run "obsidian-project init" to configure your vault root.\n'
+    'Required CLIs found. obsidian-project installed. Rerun with "--foreground-scripts" for install-time configuration, or run "obsidian-project init".\n'
   );
   process.exit(0);
 }

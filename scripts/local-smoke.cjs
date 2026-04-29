@@ -44,8 +44,24 @@ try {
   assert(runCli(installed, ['--help']).includes('new [options] <project>'), 'Installed CLI help did not include expected command.');
 
   step('initialize isolated config');
-  runCli(installed, ['init', '--yes', '--vault-root', vaultRoot]);
+  runCli(installed, ['init', '--yes', '--vault-root', vaultRoot, '--common-later']);
   assertFile(path.join(configDir, 'config.json'));
+
+  step('verify project creation waits for common vault');
+  const prematureNew = spawn(process.execPath, [installed.script, 'new', projectName]);
+  assert(prematureNew.status !== 0, 'Project creation should fail before common vault is configured.');
+  assert(
+    `${prematureNew.stdout}\n${prematureNew.stderr}`.includes('set-common'),
+    'Expected project creation failure to mention set-common.'
+  );
+
+  step('select existing common vault later');
+  const externalCommon = path.join(tempRoot, 'external-common');
+  fs.mkdirSync(externalCommon, { recursive: true });
+  runCli(installed, ['set-common', externalCommon]);
+
+  step('create managed common vault later');
+  runCli(installed, ['create-common']);
 
   step('create isolated project vault');
   runCli(installed, ['new', projectName]);
@@ -66,8 +82,14 @@ try {
   assertFile(path.join(projectVault, '.obsidian-project', 'codex-instructions.md'));
   assertFile(codexConfig);
 
+  step('list isolated project vaults');
+  const listOutput = runCli(installed, ['list']);
+  assert(listOutput.includes('Common: common'), 'Expected list output to include the common vault.');
+  assert(listOutput.includes(`Project: ${projectName}`), 'Expected list output to include the project vault.');
+  assert(listOutput.includes('wiki/common:'), 'Expected list output to include the linked common wiki folder.');
+
   const codexText = fs.readFileSync(codexConfig, 'utf8');
-  assert(codexText.includes('[mcp_servers.obsidianProject_project-1]'), 'Codex MCP server block missing.');
+  assert(codexText.includes('[profiles.obsidian-vault-project-1.mcp_servers.obsidianProject]'), 'Codex MCP server block missing.');
   assert(codexText.includes('"x-obsidian-project" = "project-1"'), 'Codex project header missing.');
   assert(codexText.includes('[profiles.obsidian-vault-project-1]'), 'Codex profile block missing.');
 
@@ -78,6 +100,13 @@ try {
   runCli(installed, ['delete', projectName, '--yes', '--skip-push']);
   assert(!fs.existsSync(projectVault), 'Project vault should be deleted locally.');
   assert(fs.existsSync(commonVault), 'Common vault should remain after project delete.');
+
+  step('clean stale Codex config');
+  const cleanupOutput = runCli(installed, ['clean-up']);
+  assert(cleanupOutput.includes(`Removed stale profiles: ${projectName}`), 'Expected cleanup to remove the deleted project profile.');
+  const cleanedCodexText = fs.readFileSync(codexConfig, 'utf8');
+  assert(!cleanedCodexText.includes('[profiles.obsidian-vault-project-1.mcp_servers.obsidianProject]'), 'Codex MCP server block should be removed.');
+  assert(!cleanedCodexText.includes('[profiles.obsidian-vault-project-1]'), 'Codex profile block should be removed.');
 
   step('external dependency probe');
   const doctor = spawn(process.execPath, [installed.script, 'doctor']);
@@ -95,6 +124,12 @@ try {
     log('doctor output:');
     log(indent((doctor.stderr || doctor.stdout || '').trim() || '(no output)'));
   }
+
+  step('clean uninstall state without removing temporary package');
+  const uninstallOutput = runCli(installed, ['uninstall', '--yes', '--skip-package']);
+  assert(uninstallOutput.includes('Vaults, common mounts, and Git repositories were left untouched.'), 'Expected uninstall safety message.');
+  assert(!fs.existsSync(path.join(configDir, 'config.json')), 'Config file should be removed by uninstall.');
+  assert(fs.existsSync(commonVault), 'Common vault should remain after uninstall.');
 
   log('local smoke suite passed');
 } finally {

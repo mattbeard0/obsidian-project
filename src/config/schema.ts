@@ -13,6 +13,8 @@ export const appConfigSchema = z.object({
   vaultRoot: z.string().min(1),
   repoPrefix: z.string().min(1).default('obsidian-vault-'),
   commonProjectName: z.string().min(1).default('common'),
+  commonConfigured: z.boolean().default(true),
+  commonVaultPath: z.string().min(1).optional(),
   folderStructure: folderStructureSchema.default({
     raw: 'raw',
     wiki: 'wiki',

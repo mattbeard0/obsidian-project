@@ -8,6 +8,7 @@ import { ensureGitRepo } from '../git/repo.js';
 import { createGitHubRepo } from '../github/gh.js';
 import { createCommonMount } from '../vaults/links.js';
 import { commonLayout, projectLayout } from '../vaults/layout.js';
+import { UserError } from '../errors.js';
 
 export interface CreateProjectOptions {
   createRemote?: boolean;
@@ -27,6 +28,12 @@ export async function createProject(
   options: CreateProjectOptions = {}
 ): Promise<CreateProjectResult> {
   const project = sanitizeProjectName(requestedProject);
+  if (!config.commonConfigured) {
+    throw new UserError(
+      'Common vault is not configured yet. Run "obsidian-project set-common" to select one or "obsidian-project create-common" to create one.'
+    );
+  }
+
   const common = commonLayout(config);
   const layout = projectLayout(config, project);
   const serverPort = options.serverPort ?? config.server.preferredPort;

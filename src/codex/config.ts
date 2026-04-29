@@ -14,6 +14,17 @@ export interface CodexProjectProfileOptions {
   instructionsPath: string;
 }
 
+export interface CleanupCodexProfilesResult {
+  configPath: string;
+  removedProjects: string[];
+  keptProjects: string[];
+}
+
+export interface RemoveCodexProfilesResult {
+  configPath: string;
+  removedProjects: string[];
+}
+
 export async function writeCodexProjectProfile(options: CodexProjectProfileOptions): Promise<string> {
   const file = options.config.codex.configPath ?? defaultCodexConfigPath();
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -29,6 +40,81 @@ export async function writeCodexProjectProfile(options: CodexProjectProfileOptio
   const next = replaceMarkedBlock(current, options.project, block);
   await fs.writeFile(file, next, 'utf8');
   return file;
+}
+
+export async function cleanupCodexProjectProfiles(
+  config: AppConfig,
+  existingProjects: Set<string>
+): Promise<CleanupCodexProfilesResult> {
+  const file = config.codex.configPath ?? defaultCodexConfigPath();
+  let current = '';
+  try {
+    current = await fs.readFile(file, 'utf8');
+  } catch {
+    return {
+      configPath: file,
+      removedProjects: [],
+      keptProjects: []
+    };
+  }
+
+  const removedProjects: string[] = [];
+  const keptProjects: string[] = [];
+  const pattern = new RegExp(
+    `${escapeRegExp(BEGIN_PREFIX)}([^\\r\\n]+)\\r?\\n[\\s\\S]*?${escapeRegExp(END_PREFIX)}\\1\\r?\\n?`,
+    'g'
+  );
+  const next = current.replace(pattern, (block, project: string) => {
+    if (existingProjects.has(project)) {
+      keptProjects.push(project);
+      return block;
+    }
+
+    removedProjects.push(project);
+    return '';
+  });
+
+  if (next !== current) {
+    await fs.writeFile(file, collapseExcessBlankLines(next), 'utf8');
+  }
+
+  return {
+    configPath: file,
+    removedProjects,
+    keptProjects
+  };
+}
+
+export async function removeAllCodexProjectProfiles(configPath?: string): Promise<RemoveCodexProfilesResult> {
+  const file = configPath ?? defaultCodexConfigPath();
+  let current = '';
+  try {
+    current = await fs.readFile(file, 'utf8');
+  } catch {
+    return {
+      configPath: file,
+      removedProjects: []
+    };
+  }
+
+  const removedProjects: string[] = [];
+  const pattern = new RegExp(
+    `${escapeRegExp(BEGIN_PREFIX)}([^\\r\\n]+)\\r?\\n[\\s\\S]*?${escapeRegExp(END_PREFIX)}\\1\\r?\\n?`,
+    'g'
+  );
+  const next = current.replace(pattern, (_block, project: string) => {
+    removedProjects.push(project);
+    return '';
+  });
+
+  if (next !== current) {
+    await fs.writeFile(file, collapseExcessBlankLines(next), 'utf8');
+  }
+
+  return {
+    configPath: file,
+    removedProjects
+  };
 }
 
 export async function refreshCodexProfilesForPort(config: AppConfig, port: number): Promise<void> {
@@ -68,15 +154,15 @@ function renderCodexBlock(options: CodexProjectProfileOptions): string {
 
   return [
     `${BEGIN_PREFIX}${options.project}`,
-    `[mcp_servers.${tomlBareKey(serverName)}]`,
+    `[profiles.${tomlBareKey(profileName)}]`,
+    `model_instructions_file = ${escapedInstructions}`,
+    '',
+    `[profiles.${tomlBareKey(profileName)}.mcp_servers.${tomlBareKey(serverName)}]`,
     `url = ${tomlString(url)}`,
     `required = true`,
     `startup_timeout_ms = 10000`,
     `tool_timeout_sec = 120`,
     `http_headers = { "x-obsidian-project" = ${tomlString(options.project)} }`,
-    '',
-    `[profiles.${tomlBareKey(profileName)}]`,
-    `model_instructions_file = ${escapedInstructions}`,
     `${END_PREFIX}${options.project}`,
     ''
   ].join('\n');
@@ -97,7 +183,7 @@ function replaceMarkedBlock(current: string, project: string, block: string): st
 }
 
 export function codexMcpServerName(config: AppConfig, project: string): string {
-  return `${config.codex.mcpServerNamePrefix}_${project.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  return config.codex.mcpServerNamePrefix;
 }
 
 export function codexProfileName(config: AppConfig, project: string): string {
@@ -114,4 +200,8 @@ function tomlString(value: string): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function collapseExcessBlankLines(value: string): string {
+  return value.replace(/\n{3,}/g, '\n\n');
 }

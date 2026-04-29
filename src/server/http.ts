@@ -55,6 +55,7 @@ export async function runMcpHttpServer(config: AppConfig, options: ServerOptions
         transport = transports[sessionId];
       } else if (!sessionId && isInitializeRequest(req.body)) {
         const project = await projectFromRequest(config, req);
+        const chatId = chatIdFromRequest(req);
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: initializedSessionId => {
@@ -67,7 +68,7 @@ export async function runMcpHttpServer(config: AppConfig, options: ServerOptions
             delete transports[sid];
           }
         };
-        const server = createProjectMcpServer(config, project);
+        const server = createProjectMcpServer(config, project, { chatId });
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
         return;
@@ -129,6 +130,21 @@ async function projectFromRequest(config: AppConfig, req: Request): Promise<stri
   }
 
   return project;
+}
+
+function chatIdFromRequest(req: Request): string | undefined {
+  const candidates = [
+    req.header('x-obsidian-chat-id'),
+    req.header('x-codex-session-id'),
+    req.header('x-codex-chat-id'),
+    req.header('x-codex-conversation-id'),
+    req.header('x-openai-conversation-id'),
+    process.env.OBSIDIAN_PROJECT_CHAT_ID,
+    process.env.CODEX_SESSION_ID,
+    process.env.CODEX_CHAT_ID
+  ];
+
+  return candidates.find(value => value && value.trim())?.trim();
 }
 
 function sendJsonRpcError(res: Response, error: unknown): void {
