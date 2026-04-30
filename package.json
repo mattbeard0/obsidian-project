@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "scripts/postinstall.cjs",
     "scripts/local-smoke.cjs"
@@ -41,7 +42,6 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^14.0.2",
     "express": "^5.2.1",
-    "obsidian-project-cli": "^0.1.1",
     "zod": "^4.1.13"
   },
   "devDependencies": {
