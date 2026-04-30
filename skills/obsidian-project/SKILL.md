@@ -27,7 +27,7 @@ These sibling skills ship in the same bundle; open them when the task goes beyon
 |-------|----------------|
 | **obsidian-markdown** | Obsidian Flavored Markdown (wikilinks, callouts, embeds, frontmatter) for Markdown in the project wiki and for content you can read from the common mount. |
 | **obsidian-bases** | Bases (views, filters, formulas) and how they behave under MCP for project-only versus shared common material. |
-| **obsidian-json-canvas** | Canvas documents (nodes, edges, groups) and editing them through vault file tools. |
-| **obsidian-project-cli-mcp** | MCP tool names and `params` / `flags` for wrapped Obsidian commands; the bundled **READ** and **WRITE** reference pages give per-tool examples. |
+| **json-canvas** | Canvas documents (nodes, edges, groups) and editing them through vault file tools. |
+| **obsidian-project-mcp** | MCP tool names and `params` / `flags` for wrapped Obsidian commands; the bundled **READ** and **WRITE** reference pages give per-tool examples. |
 
 Use **this** skill for vault layout and segmentation; use the rows above for format and tool-call detail.
