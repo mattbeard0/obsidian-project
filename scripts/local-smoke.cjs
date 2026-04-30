@@ -14,10 +14,15 @@ const projectName = 'project-1';
 
 const env = {
   ...process.env,
+  NPM_CONFIG_PREFIX: npmPrefix,
   OBSIDIAN_PROJECT_CONFIG_DIR: configDir,
   OBSIDIAN_PROJECT_STATE_DIR: stateDir,
   CODEX_HOME: codexHome,
+  /** Isolated default vault parent (replaces removed config.json vaultRoot for tests). */
+  OBSIDIAN_PROJECT_VAULT_PARENT: vaultRoot,
   OBSIDIAN_PROJECT_SKIP_POSTINSTALL: '1',
+  /** Lets automated smoke run without Obsidian CLI / gh on PATH (doctor step still probes real CLIs). */
+  OBSIDIAN_PROJECT_SKIP_EXTERNAL_CLI_CHECKS: '1',
   GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME || 'obsidian-project local test',
   GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL || 'obsidian-project@example.invalid',
   GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME || 'obsidian-project local test',
@@ -28,6 +33,9 @@ let packedTarball;
 
 try {
   printTopLevelCliWarning();
+
+  step('build (pack uses dist/; must match current source)');
+  runNpm(['run', 'build'], { cwd: repoRoot });
 
   step('pack npm package');
   packedTarball = runNpm(['pack', '--silent'], { cwd: repoRoot }).trim().split(/\r?\n/).pop();
@@ -43,43 +51,83 @@ try {
 
   step('run installed CLI');
   assert(runCli(installed, ['--version']).trim() === require('../package.json').version, 'Installed CLI version mismatch.');
-  assert(runCli(installed, ['--help']).includes('--new <project>'), 'Installed CLI help did not include expected option command.');
-  const noArgs = runCli(installed, []);
-  assert(noArgs.includes('obsidian-project is installed.'), 'No-argument CLI should report installed status.');
-  assert(noArgs.includes('obsidian-project --help'), 'No-argument CLI should point to --help.');
+  assert(runCli(installed, ['--help']).includes('new') && runCli(installed, ['--help']).includes('<project>'), 'Installed CLI help should document new <project>.');
 
   step('initialize isolated config');
-  runCli(installed, ['--init', '--yes', '--vault-root', vaultRoot, '--common-later']);
-  assertFile(path.join(configDir, 'config.json'));
-
-  step('verify project creation waits for common vault');
-  const prematureNew = spawn(process.execPath, [installed.script, '--new', projectName]);
-  assert(prematureNew.status !== 0, 'Project creation should fail before common vault is configured.');
-  assert(
-    `${prematureNew.stdout}\n${prematureNew.stderr}`.includes('set-common'),
-    'Expected project creation failure to mention set-common.'
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(configDir, 'vault-config.json'),
+    `${JSON.stringify(
+      {
+        version: 1,
+        folderStructure: {
+          attachments: '_smoke_a',
+          noteLibrary: '_smoke_b',
+          publish: '_smoke_c',
+          projectScope: '_smoke_d',
+          sharedScope: '_smoke_e'
+        }
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
   );
 
-  step('select existing common vault later');
-  const externalCommon = path.join(tempRoot, 'external-common');
-  fs.mkdirSync(externalCommon, { recursive: true });
-  runCli(installed, ['--set-common', externalCommon]);
+  step('bootstrap with no subcommand (non-interactive flags)');
+  const bootstrapOut = runCli(installed, ['--non-interactive', '--skip-github']);
+  assert(bootstrapOut.includes('Init finished'), 'Default command should run bootstrap (Init finished).');
+  assertFile(path.join(configDir, 'config.json'));
+  const afterBootstrap = JSON.parse(fs.readFileSync(path.join(configDir, 'config.json'), 'utf8'));
+  assert(
+    afterBootstrap.cliBootstrap && afterBootstrap.cliBootstrap.preferredPort,
+    'First-time setup should persist cliBootstrap in config.'
+  );
 
-  step('create managed common vault later');
-  runCli(installed, ['--create-common']);
+  step('github subcommand');
+  assert(runCli(installed, ['--help']).includes('github'), 'Installed CLI help should document github.');
+  const ghOut = runCli(installed, ['--skip-github', 'github']);
+  assert(ghOut.includes('GitHub (obsidian-project):'), 'github should print config header.');
+  assert(ghOut.includes('GitHub remote creation is disabled.'), 'github --skip-github should confirm remotes disabled.');
+
+  step('agent-skill');
+  assert(runCli(installed, ['--help']).includes('agent-skill'), 'help should document agent-skill.');
+  const skillOut = runCli(installed, ['agent-skill']);
+  assert(skillOut.includes(path.join(configDir, 'skills')), 'agent-skill should print canonical skills root.');
+  assert(skillOut.includes(path.join(codexHome, 'skills')), 'agent-skill should print codex skills root.');
+  for (const dir of ['obsidian-project-mcp', 'obsidian-markdown', 'obsidian-bases', 'json-canvas']) {
+    assert(
+      fs.existsSync(path.join(configDir, 'skills', dir, 'SKILL.md')),
+      `SKILL.md should exist for ${dir} under isolated config.`
+    );
+  }
+
+  step('verify project creation waits for common vault');
+  const prematureNew = spawn(process.execPath, [installed.script, 'new', projectName]);
+  assert(prematureNew.status !== 0, 'Project creation should fail before common vault is configured.');
+  const preNewOut = `${prematureNew.stdout}\n${prematureNew.stderr}`;
+  assert(
+    /common vault|add-common|create-common/i.test(preNewOut),
+    `Expected project creation failure to mention configuring a common vault; got:\n${preNewOut}`
+  );
+
+  step('register an existing common vault (must contain .obsidian)');
+  const externalCommon = path.join(tempRoot, 'external-common');
+  fs.mkdirSync(path.join(externalCommon, '.obsidian'), { recursive: true });
+  const gitCommon = spawnSync('git', ['init'], { cwd: externalCommon, env, encoding: 'utf8' });
+  assert(gitCommon.status === 0, `git init in common vault failed: ${gitCommon.stderr || gitCommon.stdout}`);
+  runCli(installed, ['add-common-vault', '--path', externalCommon, '--name', 'common']);
 
   step('create isolated project vault');
-  runCli(installed, ['--new', projectName]);
+  runCli(installed, ['new', projectName]);
 
-  const commonVault = path.join(vaultRoot, 'obsidian-vault-common');
+  const commonVault = externalCommon;
   const projectVault = path.join(vaultRoot, `obsidian-vault-${projectName}`);
-  const projectWiki = path.join(projectVault, 'wiki', 'project');
-  const commonMount = path.join(projectVault, 'wiki', 'common');
+  const commonMount = path.join(projectVault, '_smoke_b', '_smoke_e');
   const codexConfig = path.join(codexHome, 'config.toml');
 
   assertDir(commonVault);
   assertDir(projectVault);
-  assertDir(projectWiki);
   assertPath(commonMount);
   assertDir(path.join(commonVault, '.git'));
   assertDir(path.join(projectVault, '.git'));
@@ -88,10 +136,10 @@ try {
   assertFile(codexConfig);
 
   step('list isolated project vaults');
-  const listOutput = runCli(installed, ['--list']);
+  const listOutput = runCli(installed, ['list']);
   assert(listOutput.includes('Common: common'), 'Expected list output to include the common vault.');
   assert(listOutput.includes(`Project: ${projectName}`), 'Expected list output to include the project vault.');
-  assert(listOutput.includes('wiki/common:'), 'Expected list output to include the linked common wiki folder.');
+  assert(listOutput.includes('common mount:'), 'Expected list output to include the common vault mount row.');
 
   const codexText = fs.readFileSync(codexConfig, 'utf8');
   assert(codexText.includes('[profiles.project-1.mcp_servers.obsidian-notes]'), 'Codex MCP server block missing.');
@@ -99,22 +147,22 @@ try {
   assert(codexText.includes('[profiles.project-1]'), 'Codex profile block missing.');
 
   step('show local status command');
-  assert(runCli(installed, ['--status']).includes('MCP server is not running.'), 'Expected status to report stopped server.');
+  assert(runCli(installed, ['status']).includes('MCP server is not running.'), 'Expected status to report stopped server.');
 
   step('delete isolated project vault');
-  runCli(installed, ['--delete', projectName, '--yes', '--skip-push']);
+  runCli(installed, ['delete', projectName, '--yes', '--skip-push']);
   assert(!fs.existsSync(projectVault), 'Project vault should be deleted locally.');
   assert(fs.existsSync(commonVault), 'Common vault should remain after project delete.');
 
   step('clean stale Codex config');
-  const cleanupOutput = runCli(installed, ['--clean-up']);
+  const cleanupOutput = runCli(installed, ['clean-up']);
   assert(cleanupOutput.includes(`Removed stale profiles: ${projectName}`), 'Expected cleanup to remove the deleted project profile.');
   const cleanedCodexText = fs.readFileSync(codexConfig, 'utf8');
   assert(!cleanedCodexText.includes('[profiles.project-1.mcp_servers.obsidian-notes]'), 'Codex MCP server block should be removed.');
   assert(!cleanedCodexText.includes('[profiles.project-1]'), 'Codex profile block should be removed.');
 
   step('external dependency probe');
-  const doctor = spawn(process.execPath, [installed.script, '--doctor']);
+  const doctor = spawn(process.execPath, [installed.script, 'doctor']);
   if (doctor.status === 0) {
     log('doctor passed: Obsidian CLI and GitHub CLI are installed and ready.');
     log(indent(doctor.stdout.trim()));
@@ -123,15 +171,15 @@ try {
     log('The package install, vault creation, Git repos, Codex profile generation, and delete flow already passed.');
     log('');
     log('To use "obsidian-project start" and the MCP server, install and configure both external CLIs:');
-    log('  - Obsidian CLI: install Obsidian desktop 1.12.7+, enable Settings > General > Command line interface, then verify "obsidian version".');
-    log('  - GitHub CLI: install gh, run "gh auth login", then verify "gh auth status".');
+    log('  - Obsidian CLI: install Obsidian desktop 1.12.7+, enable Settings > General > Command line interface, then verify "obsidian version". https://obsidian.md/cli');
+    log('  - GitHub CLI: install gh (https://cli.github.com/), run "gh auth login", then verify "gh auth status".');
     log('');
     log('doctor output:');
     log(indent((doctor.stderr || doctor.stdout || '').trim() || '(no output)'));
   }
 
-  step('clean uninstall state without removing temporary package');
-  const uninstallOutput = runCli(installed, ['--uninstall', '--yes', '--skip-package']);
+  step('clean uninstall (config + package from isolated npm prefix)');
+  const uninstallOutput = runCli(installed, ['uninstall', '--yes']);
   assert(uninstallOutput.includes('Vaults, common mounts, and Git repositories were left untouched.'), 'Expected uninstall safety message.');
   assert(!fs.existsSync(path.join(configDir, 'config.json')), 'Config file should be removed by uninstall.');
   assert(fs.existsSync(commonVault), 'Common vault should remain after uninstall.');
