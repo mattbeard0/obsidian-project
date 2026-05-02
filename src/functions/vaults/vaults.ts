@@ -6,6 +6,7 @@ import { UserError } from '../errors.js';
 import { displayPath } from '../platform/paths.js';
 import { discoverProjectNames } from '../projects/projects.js';
 import { createCommonMount } from '../symlinks/index.js';
+import { absoluteCommonMount } from './commonMountPaths.js';
 
 // --- Resolved absolute paths (common + project vaults) ---
 
@@ -13,22 +14,13 @@ interface CommonVaultPaths {
   project: string;
   repoName: string;
   vaultPath: string;
-  attachmentsPath: string;
-  noteLibraryPath: string;
-  publishPath: string;
 }
 
 interface ProjectVaultPaths {
   project: string;
   repoName: string;
   vaultPath: string;
-  attachmentsPath: string;
-  noteLibraryPath: string;
-  publishPath: string;
-  projectScopePath: string;
   sharedMountPath: string;
-  metadataPath: string;
-  codexInstructionsPath: string;
 }
 
 /** Git remote / folder name: `repoPrefix` + project key. */
@@ -45,17 +37,13 @@ function resolveProjectVaultDirectory(config: AppConfig, project: string): strin
 
 /** Paths for the common vault (explicit `commonVaultPath` or default next to other project vaults). */
 export function resolveCommonVaultPaths(config: AppConfig): CommonVaultPaths {
-  const folders = config.folderStructure;
   if (!config.commonVaultPath) {
     const vaultPath = resolveProjectVaultDirectory(config, config.commonProjectName);
     const repoName = repoNameForProject(config, config.commonProjectName);
     return {
       project: config.commonProjectName,
       repoName,
-      vaultPath,
-      attachmentsPath: path.join(vaultPath, folders.attachments),
-      noteLibraryPath: path.join(vaultPath, folders.noteLibrary),
-      publishPath: path.join(vaultPath, folders.publish)
+      vaultPath
     };
   }
 
@@ -64,16 +52,12 @@ export function resolveCommonVaultPaths(config: AppConfig): CommonVaultPaths {
   return {
     project: config.commonProjectName,
     repoName,
-    vaultPath,
-    attachmentsPath: path.join(vaultPath, folders.attachments),
-    noteLibraryPath: path.join(vaultPath, folders.noteLibrary),
-    publishPath: path.join(vaultPath, folders.publish)
+    vaultPath
   };
 }
 
-/** Resolved paths for a project vault from `folderStructure` and registry/default directory. */
+/** Resolved paths for a project vault (`common` mount directory at vault root). */
 export function resolveProjectVaultPaths(config: AppConfig, project: string): ProjectVaultPaths {
-  const folders = config.folderStructure;
   const repoName = repoNameForProject(config, project);
   const vaultPath = resolveProjectVaultDirectory(config, project);
 
@@ -81,13 +65,7 @@ export function resolveProjectVaultPaths(config: AppConfig, project: string): Pr
     project,
     repoName,
     vaultPath,
-    attachmentsPath: path.join(vaultPath, folders.attachments),
-    noteLibraryPath: path.join(vaultPath, folders.noteLibrary),
-    publishPath: path.join(vaultPath, folders.publish),
-    projectScopePath: path.join(vaultPath, folders.noteLibrary, folders.projectScope),
-    sharedMountPath: path.join(vaultPath, folders.noteLibrary, folders.sharedScope),
-    metadataPath: path.join(vaultPath, '.obsidian-project.json'),
-    codexInstructionsPath: path.join(vaultPath, '.obsidian-project', 'codex-instructions.md')
+    sharedMountPath: absoluteCommonMount(vaultPath)
   };
 }
 
@@ -144,7 +122,7 @@ interface MountDrift {
   detail?: string;
 }
 
-/** Compare each project’s shared mount to the common note library; list mismatches or missing links. */
+/** Compare each project’s shared mount to the common vault root; list mismatches or missing links. */
 export async function findCommonMountDrift(config: AppConfig): Promise<MountDrift[]> {
   if (!config.commonConfigured) {
     return [];
@@ -154,7 +132,7 @@ export async function findCommonMountDrift(config: AppConfig): Promise<MountDrif
   const drift: MountDrift[] = [];
   const projects = await discoverProjectNames(config);
 
-  const expectedTarget = await fs.realpath(common.noteLibraryPath).catch(() => path.resolve(common.noteLibraryPath));
+  const expectedTarget = await fs.realpath(common.vaultPath).catch(() => path.resolve(common.vaultPath));
 
   for (const project of projects) {
     const projectPaths = resolveProjectVaultPaths(config, project);
@@ -205,7 +183,7 @@ export async function findCommonMountDrift(config: AppConfig): Promise<MountDrif
           expectedTarget,
           actualTarget: resolved,
           reason: 'not_link',
-          detail: 'Path is not a symlink toward the common vault note library.'
+          detail: 'Path is not a symlink toward the common vault.'
         });
       }
     } catch (err) {
@@ -227,7 +205,7 @@ export function formatMountDriftReport(items: MountDrift[]): string {
   if (items.length === 0) {
     return '';
   }
-  const lines = ['Shared common mount differs from vault-config.json:', ''];
+  const lines = ['Shared common mount differs from the registered common vault:', ''];
   for (const d of items) {
     lines.push(`- Project "${d.project}": ${displayPath(d.mountPath)}`);
     lines.push(`  Expected -> ${displayPath(d.expectedTarget)}`);
@@ -240,12 +218,12 @@ export function formatMountDriftReport(items: MountDrift[]): string {
   return lines.join('\n');
 }
 
-/** Recreate shared mounts so each listed drift points at the common note library. */
+/** Recreate shared mounts so each listed drift points at the common vault root. */
 export async function repairCommonMounts(config: AppConfig, items: MountDrift[]): Promise<void> {
   const common = resolveCommonVaultPaths(config);
   for (const d of items) {
     const projectPaths = resolveProjectVaultPaths(config, d.project);
-    await createCommonMount(projectPaths.sharedMountPath, common.noteLibraryPath, { forceReplace: true });
+    await createCommonMount(projectPaths.sharedMountPath, common.vaultPath, { forceReplace: true });
   }
 }
 

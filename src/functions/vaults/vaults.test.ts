@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { appConfigSchema } from '../../config/config.js';
 import { createCommonMount } from '../symlinks/index.js';
+import { absoluteCommonMount } from './commonMountPaths.js';
 import { assertMissingOrEmptyDirectory, findCommonMountDrift } from './vaults.js';
 
 describe('assertMissingOrEmptyDirectory', () => {
@@ -40,8 +41,8 @@ describe('findCommonMountDrift', () => {
     const projectName = 'alpha';
     const projectVault = path.join(root, `${repoPrefix}${projectName}`);
 
-    await fs.mkdir(path.join(commonVault, 'n0'), { recursive: true });
-    await fs.mkdir(path.join(projectVault, 'n0', 'j0'), { recursive: true });
+    await fs.mkdir(commonVault, { recursive: true });
+    await fs.mkdir(projectVault, { recursive: true });
 
     const config = appConfigSchema.parse({
       repoPrefix,
@@ -49,19 +50,16 @@ describe('findCommonMountDrift', () => {
       commonConfigured: true,
       commonVaultPath: commonVault,
       projectVaults: { [projectName]: projectVault },
-      folderStructure: {
-        attachments: 'i0',
-        noteLibrary: 'n0',
-        publish: 'p0',
-        projectScope: 'j0',
-        sharedScope: 'k0'
-      }
+      copyFromCommon: [],
+      github: { createRemotes: false, hostname: 'github.com' },
+      server: { host: '127.0.0.1', preferredPort: 57891 },
+      codex: { mcpServerNamePrefix: 'obsidian-notes', profileNamePrefix: '' }
     });
 
     const drift = await findCommonMountDrift(config);
     expect(drift.some(d => d.project === projectName && d.reason === 'missing')).toBe(true);
 
-    await createCommonMount(path.join(projectVault, 'n0', 'k0'), path.join(commonVault, 'n0'));
+    await createCommonMount(absoluteCommonMount(projectVault), commonVault);
     const after = await findCommonMountDrift(config);
     expect(after.filter(d => d.project === projectName)).toHaveLength(0);
 

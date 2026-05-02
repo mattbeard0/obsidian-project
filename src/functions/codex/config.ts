@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { AppConfig, defaultVaultParentDirectory } from '../../config/config.js';
+import { AppConfig } from '../../config/config.js';
 
 const BEGIN_PREFIX = '# BEGIN obsidian-project ';
 const END_PREFIX = '# END obsidian-project ';
@@ -39,36 +39,6 @@ export async function writeCodexProjectProfile(options: CodexProjectProfileOptio
   const next = replaceMarkedBlock(current, options.project, block);
   await fs.writeFile(file, next, 'utf8');
   return file;
-}
-
-/** Rewrite every repo under the default vault parent that has codex instructions so MCP URL matches `port`. */
-export async function refreshCodexProfilesForPort(config: AppConfig, port: number): Promise<void> {
-  const root = defaultVaultParentDirectory();
-  let entries: string[];
-  try {
-    entries = await fs.readdir(root);
-  } catch {
-    return;
-  }
-
-  await Promise.all(
-    entries
-      .filter(entry => entry.startsWith(config.repoPrefix))
-      .map(async entry => {
-        const project = entry.slice(config.repoPrefix.length);
-        if (project === config.commonProjectName) {
-          return;
-        }
-
-        const instructionsPath = path.join(root, entry, '.obsidian-project', 'codex-instructions.md');
-        try {
-          await fs.access(instructionsPath);
-        } catch {
-          return;
-        }
-        await writeCodexProjectProfile({ config, project, port, instructionsPath });
-      })
-  );
 }
 
 /** TOML snippet for one project profile + MCP server entry. */

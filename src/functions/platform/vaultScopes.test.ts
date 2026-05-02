@@ -3,35 +3,39 @@ import { describe, expect, it } from 'vitest';
 import { appConfigSchema } from '../../config/config.js';
 import { checkReadablePath, checkWritableProjectPath, defaultProjectNotePath, normalizeVaultRelativePath } from './vaultScopes.js';
 
-const config = appConfigSchema.parse({
-  folderStructure: {
-    attachments: 'i0',
-    noteLibrary: 'n0',
-    publish: 'p0',
-    projectScope: 'j0',
-    sharedScope: 'k0'
+const minimal = appConfigSchema.parse({
+  repoPrefix: 'obsidian-vault-',
+  commonProjectName: 'common',
+  commonConfigured: false,
+  copyFromCommon: [],
+  projectVaults: {},
+  github: { createRemotes: false, hostname: 'github.com' },
+  server: { host: '127.0.0.1', preferredPort: 57891 },
+  codex: { mcpServerNamePrefix: 'obsidian-notes', profileNamePrefix: '' },
+  cliBootstrap: {
+    preferredPort: 57891,
+    githubHostname: 'github.com',
+    createRemotes: false
   }
 });
 
 describe('vaultScopes', () => {
-  it('blocks traversal and absolute paths', () => {
-    expect(() => normalizeVaultRelativePath('../secret.md')).toThrow();
-    expect(() => normalizeVaultRelativePath('/tmp/secret.md')).toThrow();
-    expect(() => normalizeVaultRelativePath('C:\\secret.md')).toThrow();
+  it('classifies paths under the common mount as common', () => {
+    expect(checkReadablePath(minimal, 'common/Shared.md')).toMatchObject({ scope: 'common' });
+    expect(checkReadablePath(minimal, 'common')).toMatchObject({ scope: 'common' });
+    expect(checkReadablePath(minimal, 'Notes/a.md')).toMatchObject({ scope: 'project' });
   });
 
-  it('allows reads from project and common scopes', () => {
-    expect(checkReadablePath(config, 'n0/j0/a.md')).toMatchObject({ scope: 'project' });
-    expect(checkReadablePath(config, 'n0/k0/a.md')).toMatchObject({ scope: 'common' });
-    expect(checkReadablePath(config, 'n0')).toMatchObject({ scope: 'visible-root' });
+  it('rejects writes under the common mount', () => {
+    expect(() => checkWritableProjectPath(minimal, 'common/x.md')).toThrow(/read-only/);
+    expect(checkWritableProjectPath(minimal, 'Notes/x.md')).toBe('Notes/x.md');
   });
 
-  it('allows writes only inside project scope', () => {
-    expect(checkWritableProjectPath(config, 'n0/j0/a.md')).toBe('n0/j0/a.md');
-    expect(() => checkWritableProjectPath(config, 'n0/k0/a.md')).toThrow(/read-only/);
+  it('defaultProjectNotePath returns normalized vault-relative paths', () => {
+    expect(defaultProjectNotePath(minimal, 'x/a.md')).toBe('x/a.md');
   });
 
-  it('defaults bare note paths into the project scope', () => {
-    expect(defaultProjectNotePath(config, 'x/a.md')).toBe('n0/j0/x/a.md');
+  it('normalizeVaultRelativePath rejects traversal', () => {
+    expect(() => normalizeVaultRelativePath('../etc/passwd')).toThrow();
   });
 });

@@ -2,6 +2,7 @@ import { AppConfig } from '../config/config.js';
 import { UserError } from '../functions/errors.js';
 import { envWithGithubHost, runCommand, runRequired } from '../functions/platform/shell.js';
 import { checkReadablePath, checkWritableProjectPath } from '../functions/platform/vaultScopes.js';
+import { VAULT_RELATIVE_COMMON_MOUNT } from '../functions/vaults/commonMountPaths.js';
 
 /** Open a pull request in the common vault repo via `gh pr create`. */
 export async function createPullRequest(
@@ -192,10 +193,9 @@ interface ObsidianCallResult {
   stderr: string;
 }
 
-/** Project + shared search roots for default `search` when `path` is omitted. */
-function visibleSearchFolders(config: AppConfig): string[] {
-  const layout = config.folderStructure;
-  return [`${layout.noteLibrary}/${layout.projectScope}`, `${layout.noteLibrary}/${layout.sharedScope}`];
+/** Search roots for default `search` when `path` is omitted (vault root + common mount). */
+function visibleSearchFolders(_config: AppConfig): string[] {
+  return ['.', VAULT_RELATIVE_COMMON_MOUNT];
 }
 
 /** Run a whitelisted Obsidian CLI command with vault and path scoping. */
@@ -224,11 +224,11 @@ export async function runScopedObsidianCommand(call: ScopedObsidianCall): Promis
   }
 
   if (call.command === 'files' && !params.folder) {
-    params.folder = call.config.folderStructure.noteLibrary;
+    params.folder = '.';
   }
 
   if (call.command === 'folders' && !params.folder) {
-    params.folder = call.config.folderStructure.noteLibrary;
+    params.folder = '.';
   }
 
   return await invokeObsidian(call.vaultName, call.command, params, flags);

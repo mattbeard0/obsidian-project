@@ -19,14 +19,14 @@ vi.mock('../functions/vaults/vaults.js', async importOriginal => {
 import { ensureMountsBeforeServerStart } from './interactive.js';
 
 const baseConfig = appConfigSchema.parse({
+  repoPrefix: 'obsidian-vault-',
+  commonProjectName: 'common',
   commonConfigured: true,
-  folderStructure: {
-    attachments: 'i0',
-    noteLibrary: 'n0',
-    publish: 'p0',
-    projectScope: 'j0',
-    sharedScope: 'k0'
-  }
+  copyFromCommon: [],
+  projectVaults: {},
+  github: { createRemotes: false, hostname: 'github.com' },
+  server: { host: '127.0.0.1', preferredPort: 57891 },
+  codex: { mcpServerNamePrefix: 'obsidian-notes', profileNamePrefix: '' }
 });
 
 beforeEach(() => {

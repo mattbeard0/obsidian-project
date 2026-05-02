@@ -15,7 +15,6 @@ import * as z from 'zod/v4';
 
 import { AppConfig, sanitizeProjectName } from '../config/config.js';
 import { UserError, errorMessage } from '../functions/errors.js';
-import { refreshCodexProfilesForPort } from '../functions/codex/config.js';
 import { assertGhReady, assertObsidianCliReady, type GitHubAccount } from '../functions/dependency/dependencyCheck.js';
 import { commitIfNeeded } from '../functions/git/index.js';
 import {
@@ -30,6 +29,7 @@ import { findForbiddenLinks } from './noteLinkPolicy.js';
 import { displayPath, redactHomeInText, serverLogPath, serverStatePath, stateDir } from '../functions/platform/paths.js';
 import { runCommand, runRequired } from '../functions/platform/shell.js';
 import { normalizeVaultRelativePath } from '../functions/platform/vaultScopes.js';
+import { VAULT_RELATIVE_COMMON_MOUNT } from '../functions/vaults/commonMountPaths.js';
 import { resolveCommonVaultPaths, resolveProjectVaultPaths } from '../functions/vaults/vaults.js';
 
 /** Check out an existing branch or create it if missing. */
@@ -60,7 +60,7 @@ interface StartResult {
   alreadyRunning: boolean;
 }
 
-/** Start the detached MCP HTTP server (or return early if already healthy), refresh Codex profiles, persist state. */
+/** Start the detached MCP HTTP server (or return early if already healthy), persist state. */
 export async function startServer(config: AppConfig): Promise<StartResult> {
   const existing = await readServerState();
   if (existing && (await health(existing))) {
@@ -99,7 +99,6 @@ export async function startServer(config: AppConfig): Promise<StartResult> {
   }
 
   await writeServerState(state);
-  await refreshCodexProfilesForPort(config, port);
 
   return {
     state,
@@ -259,12 +258,12 @@ function createProjectMcpServer(config: AppConfig, project: string, options: Pro
         path: z
           .string()
           .describe(
-            'Vault-relative path to the shared note in the common vault. From the project vault, use paths under your configured note-library and shared-scope folders (see vault-config folderStructure).'
+            'Vault-relative path to the note in the common vault (paths are relative to the common vault root).'
           ),
         diff: z
           .string()
           .describe(
-            'Unified git diff to apply in the common vault. Paths in the diff must be under the common vault’s note-library directory (your folderStructure.noteLibrary).'
+            'Unified git diff to apply in the common vault. Paths in the diff must be relative to the common vault root.'
           ),
         reasoning: z
           .string()
@@ -338,10 +337,9 @@ async function requestCommonUpdate(
   const currentBranch = commonUpdateBranch(project, options.chatId);
   const title = `[${path.basename(targetPath)}] Content Update`;
 
-  const layout = config.folderStructure;
   const violations = findForbiddenLinks(
     config,
-    `${layout.noteLibrary}/${layout.sharedScope}/${path.basename(targetPath)}`,
+    `${VAULT_RELATIVE_COMMON_MOUNT}/__common_update__.md`,
     input.diff
   );
   if (violations.length > 0) {
@@ -446,25 +444,9 @@ function extractDiffPaths(diff: string): string[] {
   return [...paths];
 }
 
-/** Map user `path` input to a vault-relative path under the common note library. */
-function commonRepoPath(config: AppConfig, input: string): string {
-  const normalized = normalizeVaultRelativePath(input);
-  const layout = config.folderStructure;
-  let relative: string;
-
-  if (normalized.startsWith(`${layout.noteLibrary}/${layout.sharedScope}/`)) {
-    relative = normalized.slice(`${layout.noteLibrary}/${layout.sharedScope}/`.length);
-  } else if (normalized.startsWith(`${layout.sharedScope}/`)) {
-    relative = normalized.slice(`${layout.sharedScope}/`.length);
-  } else if (normalized.startsWith(`${layout.noteLibrary}/`)) {
-    relative = normalized.slice(`${layout.noteLibrary}/`.length);
-  } else {
-    relative = normalized;
-  }
-
-  const target = `${layout.noteLibrary}/${relative}`;
-  normalizeVaultRelativePath(target);
-  return target;
+/** Map user `path` input to a vault-relative path under the common vault root. */
+function commonRepoPath(_config: AppConfig, input: string): string {
+  return normalizeVaultRelativePath(input);
 }
 
 /** MCP tool result wrapper for JSON-serializable tool output. */

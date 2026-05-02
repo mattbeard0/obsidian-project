@@ -10,7 +10,7 @@ description: >-
 
 ## Common Vaults
 
-The **common vault** is a single shared Obsidian vault used by every project. It holds **context you can carry between projects**: glossaries, patterns, shared how-tos, and anything reusable—not one-off or initiative-private material. In each project vault it appears as a **mount** beside the project wiki area in the wiki layout. The MCP server lets agents **read** notes there so everyone sees the same reference material. **Direct writes** into that mount are not allowed through normal vault write tools—shared updates go through **`request_common_update`** (unified diff + PR into the common repo) so changes stay reviewable and link-safe.
+The **common vault** is a single shared Obsidian vault used by every project. It holds **context you can carry between projects**: glossaries, patterns, shared how-tos, and anything reusable—not one-off or initiative-private material. In each project vault it appears as a **`common`** mount at the **vault root** (symlink or junction). The MCP server lets agents **read** notes there so everyone sees the same reference material. **Direct writes** into that mount are not allowed through normal vault write tools—shared updates go through **`request_common_update`** (unified diff + PR into the common repo) so changes stay reviewable and link-safe.
 
 ## Project Vaults
 

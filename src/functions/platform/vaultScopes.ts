@@ -2,8 +2,9 @@ import path from 'node:path';
 
 import { AppConfig } from '../../config/config.js';
 import { UserError } from '../errors.js';
+import { isVaultRelativeUnderCommonMount } from '../vaults/commonMountPaths.js';
 
-type ScopeKind = 'project' | 'common' | 'visible-root';
+type ScopeKind = 'project' | 'common';
 
 interface ScopeCheck {
   relativePath: string;
@@ -23,51 +24,28 @@ export function normalizeVaultRelativePath(input: string): string {
   return normalized;
 }
 
-/** Classify a vault-relative path into project, common, or root scope for read access. */
-export function checkReadablePath(config: AppConfig, input: string): ScopeCheck {
+/** Classify a vault-relative path into project vs common (via the vault-root `common` mount) for read access. */
+export function checkReadablePath(_config: AppConfig, input: string): ScopeCheck {
   const relativePath = normalizeVaultRelativePath(input);
-  const layout = config.folderStructure;
-  const projectPrefix = `${layout.noteLibrary}/${layout.projectScope}/`;
-  const commonPrefix = `${layout.noteLibrary}/${layout.sharedScope}/`;
 
-  if (relativePath === layout.noteLibrary) {
-    return { relativePath, scope: 'visible-root' };
-  }
-
-  if (
-    relativePath === `${layout.noteLibrary}/${layout.projectScope}` ||
-    relativePath.startsWith(projectPrefix)
-  ) {
-    return { relativePath, scope: 'project' };
-  }
-
-  if (
-    relativePath === `${layout.noteLibrary}/${layout.sharedScope}` ||
-    relativePath.startsWith(commonPrefix)
-  ) {
+  if (isVaultRelativeUnderCommonMount(relativePath)) {
     return { relativePath, scope: 'common' };
   }
 
-  throw new UserError(`Path is outside the readable project scope: ${input}`);
+  return { relativePath, scope: 'project' };
 }
 
-/** Like `checkReadablePath` but only allows writes under the project scope (not shared/common). */
+/** Like `checkReadablePath` but only allows writes outside the common mount (common notes are MCP read-only). */
 export function checkWritableProjectPath(config: AppConfig, input: string): string {
   const readable = checkReadablePath(config, input);
-  if (readable.scope !== 'project') {
+  if (readable.scope === 'common') {
     throw new UserError(`Common notes are read-only. Use request_common_update for shared changes: ${input}`);
   }
 
   return readable.relativePath;
 }
 
-/** Resolve a note path relative to the configured note library and project scope when not already prefixed. */
-export function defaultProjectNotePath(config: AppConfig, notePath: string): string {
-  const normalized = normalizeVaultRelativePath(notePath);
-  const lib = config.folderStructure.noteLibrary;
-  if (normalized.startsWith(`${lib}/`)) {
-    return normalized;
-  }
-
-  return `${lib}/${config.folderStructure.projectScope}/${normalized}`;
+/** Return vault-relative path as given (paths are always relative to the project vault root). */
+export function defaultProjectNotePath(_config: AppConfig, notePath: string): string {
+  return normalizeVaultRelativePath(notePath);
 }

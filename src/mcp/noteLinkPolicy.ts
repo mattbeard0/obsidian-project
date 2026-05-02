@@ -1,4 +1,5 @@
 import { AppConfig } from '../config/config.js';
+import { isVaultRelativeUnderCommonMount } from '../functions/vaults/commonMountPaths.js';
 
 interface LinkViolation {
   line: number;
@@ -11,13 +12,14 @@ const markdownLinkPattern = /\[[^\]]*]\(([^)]+)\)/g;
 
 /** Scan note content for wiki/markdown links that violate common→project linking rules. */
 export function findForbiddenLinks(config: AppConfig, sourcePath: string, content: string): LinkViolation[] {
+  void config;
   const violations: LinkViolation[] = [];
-  const sourceScope = classifyLinkTarget(config, sourcePath);
+  const sourceScope = classifyLinkTarget(sourcePath);
   const lines = content.split(/\r?\n/);
 
   lines.forEach((lineText, index) => {
     for (const link of extractLinks(lineText)) {
-      const targetScope = classifyLinkTarget(config, link);
+      const targetScope = classifyLinkTarget(link);
       if (sourceScope === 'common' && targetScope === 'project') {
         violations.push({
           line: index + 1,
@@ -49,25 +51,17 @@ function extractLinks(line: string): string[] {
   return links;
 }
 
-/** Map a link target string to project vs common scope using `folderStructure`. */
-function classifyLinkTarget(config: AppConfig, link: string): 'project' | 'common' | 'unknown' {
+/** Map a link target string to project vs common scope using the vault-root `common` mount path. */
+function classifyLinkTarget(link: string): 'project' | 'common' | 'unknown' {
   const clean = link.replace(/\\/g, '/').replace(/^\/+/, '');
-  const layout = config.folderStructure;
+  const normalized = clean.split('#')[0]?.trim() ?? '';
 
-  if (
-    clean === layout.projectScope ||
-    clean.startsWith(`${layout.projectScope}/`) ||
-    clean.startsWith(`${layout.noteLibrary}/${layout.projectScope}/`)
-  ) {
-    return 'project';
+  if (isVaultRelativeUnderCommonMount(normalized)) {
+    return 'common';
   }
 
-  if (
-    clean === layout.sharedScope ||
-    clean.startsWith(`${layout.sharedScope}/`) ||
-    clean.startsWith(`${layout.noteLibrary}/${layout.sharedScope}/`)
-  ) {
-    return 'common';
+  if (normalized.includes('/')) {
+    return 'project';
   }
 
   return 'unknown';

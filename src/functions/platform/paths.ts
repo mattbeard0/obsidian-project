@@ -32,11 +32,6 @@ export function configPath(): string {
   return path.join(configDir(), 'config.json');
 }
 
-/** Absolute path to `vault-config.json` (folder layout). */
-export function vaultConfigPath(): string {
-  return path.join(configDir(), 'vault-config.json');
-}
-
 /** JSON file recording the running MCP child process (pid, port, token). */
 export function serverStatePath(): string {
   return path.join(stateDir(), 'server.json');

@@ -29,7 +29,7 @@ export async function ensureMountsBeforeServerStart(config: AppConfig, options: 
 
   if (!input.isTTY || !output.isTTY) {
     throw new UserError(
-      'Vault mounts do not match vault-config.json. Run from an interactive terminal, or run obsidian-project start --repair-mounts.'
+      'Vault mounts do not match the registered common vault. Run from an interactive terminal, or run obsidian-project start --repair-mounts.'
     );
   }
 
@@ -39,13 +39,13 @@ export async function ensureMountsBeforeServerStart(config: AppConfig, options: 
   try {
     const answer = (
       await rl.question(
-        'Update sharing on disk to match vault-config.json? This may break Obsidian links if you changed mounts intentionally. (y/N): '
+        'Update sharing on disk so each project’s vault-root `common` link points at the registered common vault? This may break Obsidian links if you changed mounts intentionally. (y/N): '
       )
     )
       .trim()
       .toLowerCase();
     if (answer !== 'y' && answer !== 'yes') {
-      throw new UserError('Start cancelled until vault mounts match vault-config.json.');
+      throw new UserError('Start cancelled until vault mounts match the registered common vault.');
     }
   } finally {
     rl.close();

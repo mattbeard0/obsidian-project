@@ -8,15 +8,8 @@ import { execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { codexConfigPath, refreshCodexProfilesForPort } from '../functions/codex/config.js';
-import {
-  configExists,
-  defaultVaultParentDirectory,
-  loadConfig,
-  readPersistedConfig,
-  readVaultConfigFromDisk,
-  type AppConfig
-} from '../config/config.js';
+import { codexConfigPath } from '../functions/codex/config.js';
+import { configExists, defaultVaultParentDirectory, loadConfig, readPersistedConfig, type AppConfig } from '../config/config.js';
 import { errorMessage, UserError } from '../functions/errors.js';
 import { assertGhReady, assertObsidianCliReady } from '../functions/dependency/dependencyCheck.js';
 import {
@@ -29,12 +22,11 @@ import {
   listProjects,
   removeCommonFromProjectCommand,
   runGithubCommand,
-  runGithubOnPersistedOnly,
   selectCommonVault,
   uninstallProjectTool
 } from '../functions/projects/projects.js';
 import { readServerState, runMcpHttpServer, startServer, stopServer } from '../mcp/mcp.js';
-import { configPath, displayPath, serverLogPath, vaultConfigPath } from '../functions/platform/paths.js';
+import { configPath, displayPath, serverLogPath } from '../functions/platform/paths.js';
 import { formatCodexSkillLines, installCodexSkill } from '../functions/skills/index.js';
 import { ensureMountsBeforeServerStart } from './interactive.js';
 
@@ -158,19 +150,21 @@ program
 
 program
   .command('add-common-to-project')
-  .description('Link the common vault note library into a project vault (mount shared folder)')
-  .requiredOption('--project <name>', 'Registered project name')
-  .option('--path <path>', 'Pick any folder inside the common vault to validate (omit for picker)')
+  .description(
+    'Link the registered common vault into <project>/common (interactive pickers, or pass --project and --common-path for scripts)'
+  )
+  .option('--project <name>', 'Registered project key (optional; use with --common-path when not interactive)')
+  .option('--common-path <path>', 'Absolute path to the registered common vault (optional; use with --project when not interactive)')
   .action(async (opts: Record<string, unknown>) => {
     await addCommonToProjectCommand({
       project: stringOption(opts.project),
-      path: stringOption(opts.path)
+      commonPath: stringOption(opts.commonPath)
     });
   });
 
 program
   .command('remove-common-from-project')
-  .description('Remove the common-library symlink from a project vault')
+  .description('Remove the vault-root `common` symlink or junction from a project vault')
   .option('--project <name>', 'Registered project name')
   .option('--path <path>', 'Project vault path (infer project from registry)')
   .action(async (opts: Record<string, unknown>) => {
@@ -185,20 +179,11 @@ program
   .description('Show GitHub remote settings, or configure them (interactive if not set up)')
   .action(async () => {
     const opts = program.opts();
-    const vault = await readVaultConfigFromDisk();
-    if (vault) {
-      const config = await loadConfig();
-      await runGithubCommand(config, {
-        skipGithub: booleanOption(opts.skipGithub),
-        owner: stringOption(opts.owner)
-      });
-    } else {
-      const persisted = await readPersistedConfig();
-      await runGithubOnPersistedOnly(persisted, {
-        skipGithub: booleanOption(opts.skipGithub),
-        owner: stringOption(opts.owner)
-      });
-    }
+    const config = await loadConfig();
+    await runGithubCommand(config, {
+      skipGithub: booleanOption(opts.skipGithub),
+      owner: stringOption(opts.owner)
+    });
   });
 
 program
@@ -245,7 +230,7 @@ program
 program
   .command('start')
   .description('Start the persistent local MCP server')
-  .option('--repair-mounts', 'Recreate mounts from vault-config.json without prompting')
+  .option('--repair-mounts', 'Recreate common vault mounts without prompting')
   .action(async function (this: Command) {
     const opts = this.opts<{ repairMounts?: boolean }>();
     await startMcpServer({
@@ -367,17 +352,14 @@ async function printProjectList(): Promise<void> {
   }
 }
 
-/** Drop stale Codex profiles and refresh MCP URLs for remaining projects. */
+/** Drop stale Codex profile blocks for projects no longer present locally. */
 async function cleanupCodexConfig(): Promise<void> {
   const config = await loadConfig();
   const existingProjects = await existingProjectNameSet(config);
   const result = await cleanupCodexProjectProfiles(config, existingProjects);
-  const state = await readServerState();
-  await refreshCodexProfilesForPort(config, state?.port ?? config.server.preferredPort);
   console.log(`Codex config: ${displayPath(result.configPath)}`);
   console.log(`Existing projects: ${existingProjects.size ? [...existingProjects].join(', ') : 'none'}`);
   console.log(`Removed stale profiles: ${result.removedProjects.length ? result.removedProjects.join(', ') : 'none'}`);
-  console.log('Refreshed existing project profiles: yes');
 }
 
 /** Remove app config, Codex snippets, stop server, and uninstall the global npm package. */
@@ -445,13 +427,11 @@ async function runDoctor(): Promise<void> {
   const account = await assertGhReady(ghHost);
   if (await configExists()) {
     try {
+      await loadConfig();
       console.log(`Config: ${displayPath(configPath())}`);
-      console.log(`Vault layout: ${displayPath(vaultConfigPath())}`);
       console.log(`Default vault parent: ${displayPath(defaultVaultParentDirectory())}`);
     } catch {
-      console.log(
-        `Config: ${displayPath(configPath())} (vault layout missing—run add-common-vault or add-project-vault, or add vault-config.json)`
-      );
+      console.log(`Config: ${displayPath(configPath())} (invalid or incomplete—fix config.json or re-run setup)`);
     }
   } else {
     console.log('obsidian-project is not configured yet. Run any obsidian-project command to create config and finish setup.');

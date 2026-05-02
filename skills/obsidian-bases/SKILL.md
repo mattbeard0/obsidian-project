@@ -9,7 +9,7 @@ description: Create and edit Obsidian Bases (.base files) with views, filters, f
 
 When **obsidian-project** MCP is active, create or edit `.base` files only through **MCP tools** (vault-relative paths)—not the shell **`obsidian`** CLI. This skill defines **Bases syntax and behavior** for content you are allowed to change via MCP. If guidance conflicts on **CLI vs MCP**, **MCP wins** for that session.
 
-**Parity with the CLI:** the same Bases commands are available as MCP tools (`bases`, `base_views`, `base_query`, `base_create`). Paths under **`wiki/project/`** behave like the CLI for that vault. Paths under **`wiki/common/`** are readable via MCP but **not** writable with `base_create` or other write tools—use **`request_common_update`** on the obsidian-project server for shared common changes instead.
+**Parity with the CLI:** the same Bases commands are available as MCP tools (`bases`, `base_views`, `base_query`, `base_create`). Paths are vault-relative. Content under the vault-root **`common/`** mount (the linked common vault) is readable via MCP but **not** writable with `base_create` or other write tools—use **`request_common_update`** on the obsidian-project server for shared common changes instead.
 
 ## Workflow
 

@@ -9,7 +9,6 @@ import {
   formatCodexSkillLines,
   installCodexSkill
 } from '../skills/index.js';
-import { ensureFolderStructureInteractive } from './folderStructureInteractive.js';
 import {
   AppConfig,
   appConfigSchema,
@@ -29,14 +28,20 @@ import {
 import { stopServer } from '../../mcp/mcp.js';
 import { assertGhReady, assertObsidianCliReady } from '../dependency/dependencyCheck.js';
 import { assertGithubOwnerCanCreateRepos, promptGithubOwnerFromMenu } from '../dependency/githubOwnerAccess.js';
-import { UserError } from '../errors.js';
-import { commitIfNeeded, ensureGitRepo, isGitRepo, pushIfRemote } from '../git/index.js';
+import { UserError, errorMessage } from '../errors.js';
+import {
+  commitIfNeeded,
+  ensureGithubRemoteRepoAndPush,
+  isGitRepo,
+  pushIfRemote,
+  runVaultGitRegistrationInteractive,
+  shouldProvisionGithubRepo
+} from '../git/index.js';
 import { chooseFolder, runRequired } from '../platform/shell.js';
 import { configDir, displayPath, stateDir } from '../platform/paths.js';
 import { createCommonMount } from '../symlinks/index.js';
 import {
   assertObsidianVaultFolder,
-  assertPathInsideDirectory,
   resolveCommonVaultPaths,
   resolveProjectVaultPaths
 } from '../vaults/vaults.js';
@@ -137,6 +142,34 @@ function isGithubRemoteFromSection(github: AppConfig['github']): boolean {
 /** True if config is set to create remotes and an owner/org is configured. */
 export function isGithubRemoteSyncConfigured(config: AppConfig): boolean {
   return isGithubRemoteFromSection(config.github);
+}
+
+/**
+ * When `github.owner` and `github.hostname` are set, create/link `origin` on GitHub and push (best-effort).
+ * Pass `allowRemote: false` when the user kept an existing local repo without re-bootstrapping (no GitHub step).
+ */
+async function tryProvisionGithubRemoteAfterVaultPrefs(
+  allowRemote: boolean,
+  config: AppConfig,
+  vaultPath: string,
+  repoName: string,
+  label: string
+): Promise<void> {
+  if (!allowRemote) {
+    return;
+  }
+  if (!shouldProvisionGithubRepo(config.github)) {
+    return;
+  }
+  if (!(await isGitRepo(vaultPath))) {
+    console.warn(`Skipping GitHub repo for ${label}: not a git repository at ${displayPath(vaultPath)}.`);
+    return;
+  }
+  try {
+    await ensureGithubRemoteRepoAndPush(vaultPath, config.github, repoName);
+  } catch (error) {
+    console.warn(`Could not create or push ${label} to GitHub: ${errorMessage(error)}`);
+  }
 }
 
 /** Human-readable summary of GitHub settings for console output. */
@@ -328,7 +361,10 @@ interface CommonVaultResult {
 
 /** Point config at an existing common vault folder and logical project name. */
 async function setCommonVault(config: AppConfig, options: SetCommonVaultOptions = {}): Promise<CommonVaultResult> {
-  const commonVaultPath = path.resolve(options.vaultPath ?? (await chooseFolder()));
+  const commonVaultPath = await assertObsidianVaultFolder(
+    path.resolve(options.vaultPath ?? (await chooseFolder('Select the common Obsidian vault folder'))),
+    'Common vault'
+  );
   const stat = await fs.stat(commonVaultPath).catch(() => undefined);
   if (!stat?.isDirectory()) {
     throw new UserError(`Common vault folder does not exist: ${commonVaultPath}`);
@@ -415,9 +451,6 @@ export async function listProjects(config: AppConfig): Promise<ProjectInventoryI
       kind: 'common',
       folders: await inspectFolders([
         ['vault', common.vaultPath],
-        ['attachments', common.attachmentsPath],
-        ['note library', common.noteLibraryPath],
-        ['publish', common.publishPath],
         ['git', path.join(common.vaultPath, '.git')]
       ])
     });
@@ -432,11 +465,7 @@ export async function listProjects(config: AppConfig): Promise<ProjectInventoryI
       kind: 'project',
       folders: await inspectFolders([
         ['vault', layout.vaultPath],
-        ['attachments', layout.attachmentsPath],
-        ['note library', layout.noteLibraryPath],
-        ['project scope', layout.projectScopePath],
         ['common mount', layout.sharedMountPath],
-        ['publish', layout.publishPath],
         ['git', path.join(layout.vaultPath, '.git')]
       ])
     });
@@ -646,30 +675,109 @@ async function resolvePathOrPicker(options: PathOrPickerOptions): Promise<string
   return path.resolve(await chooseFolder(options.pickerTitle ?? 'Select a folder'));
 }
 
+function pathsEquivalentNormalized(a: string, b: string): boolean {
+  const left = path.normalize(a);
+  const right = path.normalize(b);
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+async function resolvedVaultPathsEqual(a: string, b: string): Promise<boolean> {
+  const ra = await fs.realpath(path.resolve(a)).catch(() => path.resolve(a));
+  const rb = await fs.realpath(path.resolve(b)).catch(() => path.resolve(b));
+  return pathsEquivalentNormalized(ra, rb);
+}
+
+/** Interactive menu: registered project keys (excludes common vault name). */
+async function pickRegisteredProjectInteractive(
+  config: AppConfig,
+  opts?: { verb?: 'link' | 'unlink' }
+): Promise<string> {
+  const all = await discoverProjectNames(config);
+  const projects = all.filter(p => p !== config.commonProjectName);
+  if (projects.length === 0) {
+    throw new UserError('No project vaults registered. Run add-project-vault first.');
+  }
+  if (projects.length === 1) {
+    return projects[0]!;
+  }
+
+  const rl = readline.createInterface({ input, output });
+  try {
+    console.log('');
+    const title =
+      opts?.verb === 'unlink'
+        ? 'Select a project vault to remove the common mount from:'
+        : 'Select a project vault to link with the common vault:';
+    console.log(title);
+    projects.forEach((p, i) => console.log(`  ${i + 1}) ${p}`));
+    const ans = (await rl.question(`Enter number 1–${projects.length}: `)).trim();
+    const n = Number(ans);
+    if (!Number.isInteger(n) || n < 1 || n > projects.length) {
+      throw new UserError('Invalid choice.');
+    }
+    return projects[n - 1]!;
+  } finally {
+    rl.close();
+  }
+}
+
+/** Confirm the user picked the registered common vault (folder picker on macOS/Windows; path prompt on Linux). */
+async function confirmRegisteredCommonVaultInteractive(registeredCommonPath: string): Promise<void> {
+  let picked: string;
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    picked = await chooseFolder('Select the common Obsidian vault folder (must match the one you registered)');
+  } else {
+    const rl = readline.createInterface({ input, output });
+    try {
+      const hint = displayPath(registeredCommonPath);
+      const raw = (await rl.question(`Path to the registered common vault (${hint}): `)).trim();
+      picked = raw === '' ? path.resolve(registeredCommonPath) : path.resolve(raw);
+    } finally {
+      rl.close();
+    }
+  }
+
+  const resolved = await assertObsidianVaultFolder(picked, 'Common vault');
+  if (!(await resolvedVaultPathsEqual(resolved, registeredCommonPath))) {
+    throw new UserError(
+      `Selected vault does not match the registered common vault.\n  Registered: ${displayPath(registeredCommonPath)}\n  Selected:  ${displayPath(resolved)}`
+    );
+  }
+}
+
 /** Register the common vault path/name and run GitHub prefs flow. */
 export async function selectCommonVault(
   opts: { path?: string; name?: string; skipGithub?: boolean; owner?: string } = {}
 ): Promise<void> {
-  await ensureFolderStructureInteractive();
   const config = await loadConfig();
   const resolved = await assertObsidianVaultFolder(
     await resolvePathOrPicker({ path: opts.path, pickerTitle: 'Select the common Obsidian vault folder' }),
     'Common vault'
   );
   const name = opts.name ? sanitizeProjectName(opts.name) : projectNameFromVaultPath(resolved, config.repoPrefix);
-  const result = await setCommonVault(config, { vaultPath: resolved, name });
+
+  await runGithubCommand(config, { skipGithub: opts.skipGithub, owner: opts.owner });
+
+  const result = await setCommonVault(await loadConfig(), { vaultPath: resolved, name });
   console.log(`Common vault registered: ${result.commonProjectName}`);
   console.log(`Path: ${displayPath(result.commonVaultPath)}`);
 
-  const after = await loadConfig();
-  await runGithubCommand(after, { skipGithub: opts.skipGithub, owner: opts.owner });
+  const synced = await loadConfig();
+  const gitOutcome = await runVaultGitRegistrationInteractive(result.commonVaultPath);
+  const common = resolveCommonVaultPaths(synced);
+  await tryProvisionGithubRemoteAfterVaultPrefs(
+    gitOutcome.kind === 'fresh_bootstrap',
+    synced,
+    result.commonVaultPath,
+    common.repoName,
+    'common vault'
+  );
 }
 
 /** Register a project vault path and optional GitHub prefs. */
 export async function addProjectVaultCommand(
   opts: { path?: string; name?: string; skipGithub?: boolean; owner?: string } = {}
 ): Promise<void> {
-  await ensureFolderStructureInteractive();
   const config = await loadConfig();
   const resolved = await assertObsidianVaultFolder(
     await resolvePathOrPicker({ path: opts.path, pickerTitle: 'Select the project Obsidian vault folder' }),
@@ -679,45 +787,78 @@ export async function addProjectVaultCommand(
   if (project === config.commonProjectName) {
     throw new UserError('Project name cannot match the common vault project name.');
   }
+
+  await runGithubCommand(config, { skipGithub: opts.skipGithub, owner: opts.owner });
+
+  const fresh = await loadConfig();
   const next = appConfigSchema.parse({
-    ...config,
-    projectVaults: { ...config.projectVaults, [project]: resolved }
+    ...fresh,
+    projectVaults: { ...fresh.projectVaults, [project]: resolved }
   });
   await saveConfig(next);
-  await ensureGitRepo(resolved, `Initialize ${next.repoPrefix}${project}`).catch(() => undefined);
   console.log(`Project vault registered: ${project}`);
   console.log(`Path: ${displayPath(resolved)}`);
 
-  const after = await loadConfig();
-  await runGithubCommand(after, { skipGithub: opts.skipGithub, owner: opts.owner });
+  const synced = await loadConfig();
+  const gitOutcome = await runVaultGitRegistrationInteractive(resolved);
+  const layout = resolveProjectVaultPaths(synced, project);
+  await tryProvisionGithubRemoteAfterVaultPrefs(
+    gitOutcome.kind === 'fresh_bootstrap',
+    synced,
+    resolved,
+    layout.repoName,
+    `project vault "${project}"`
+  );
 }
 
-/** Symlink the common note library into a project’s shared-scope folder. */
-export async function addCommonToProjectCommand(opts: { project?: string; path?: string }): Promise<void> {
+/**
+ * Link the registered common vault into `<project>/common` (symlink or junction).
+ * Interactive: pick project, then confirm common vault (folder picker or path prompt).
+ * Non-interactive: pass both `--project` and `--common-path` matching the registered common vault.
+ */
+export async function addCommonToProjectCommand(opts: { project?: string; commonPath?: string }): Promise<void> {
   const config = await loadConfig();
   if (!config.commonConfigured || !config.commonVaultPath) {
     throw new UserError('Common vault is not registered. Run add-common-vault first.');
   }
-  if (!opts.project) {
-    throw new UserError('Pass --project <name> (registered project vault).');
-  }
-  const project = sanitizeProjectName(opts.project);
-  const commonRoot = path.resolve(config.commonVaultPath);
-  const picked = await resolvePathOrPicker({
-    path: opts.path,
-    pickerTitle: 'Select a folder inside the common vault (for validation)'
-  });
-  await assertPathInsideDirectory(commonRoot, picked);
-
   const common = resolveCommonVaultPaths(config);
+  const registeredCommon = common.vaultPath;
+
+  let project: string;
+  const hasProject = Boolean(opts.project?.trim());
+  const hasCommonPath = Boolean(opts.commonPath?.trim());
+
+  if (hasProject !== hasCommonPath) {
+    throw new UserError('For non-interactive use, pass both --project <name> and --common-path <path> together.');
+  }
+
+  if (hasProject && hasCommonPath) {
+    project = sanitizeProjectName(opts.project!.trim());
+    const given = path.resolve(opts.commonPath!.trim());
+    if (!(await resolvedVaultPathsEqual(given, registeredCommon))) {
+      throw new UserError(`--common-path must match the registered common vault: ${displayPath(registeredCommon)}`);
+    }
+    const layout = resolveProjectVaultPaths(config, project);
+    try {
+      await fs.access(layout.vaultPath);
+    } catch {
+      throw new UserError(`Unknown project vault: ${project}`);
+    }
+  } else if (!input.isTTY || !output.isTTY) {
+    throw new UserError('Run in an interactive terminal, or pass --project and --common-path for scripting.');
+  } else {
+    project = await pickRegisteredProjectInteractive(config, { verb: 'link' });
+    await confirmRegisteredCommonVaultInteractive(registeredCommon);
+  }
+
   const layout = resolveProjectVaultPaths(config, project);
-  await createCommonMount(layout.sharedMountPath, common.noteLibraryPath, { forceReplace: true });
-  console.log(`Linked common note library into project “${project}”.`);
+  await createCommonMount(layout.sharedMountPath, common.vaultPath, { forceReplace: true });
+  console.log(`Linked common vault into project “${project}”.`);
   console.log(`  Mount: ${displayPath(layout.sharedMountPath)}`);
-  console.log(`  → ${displayPath(common.noteLibraryPath)}`);
+  console.log(`  → ${displayPath(common.vaultPath)}`);
 }
 
-/** Remove the shared-scope symlink/junction from a project vault. */
+/** Remove the vault-root `common` symlink or junction from a project vault. */
 export async function removeCommonFromProjectCommand(opts: { project?: string; path?: string }): Promise<void> {
   const config = await loadConfig();
   if (opts.project) {
@@ -741,6 +882,14 @@ export async function removeCommonFromProjectCommand(opts: { project?: string; p
         throw new UserError('Could not infer project from --path. Pass --project <name>.');
       }
     }
+    const layout = resolveProjectVaultPaths(config, project);
+    await removeCommonMountPath(layout.sharedMountPath);
+    console.log(`Removed common mount for project “${project}”.`);
+    return;
+  }
+
+  if (input.isTTY && output.isTTY) {
+    const project = await pickRegisteredProjectInteractive(config, { verb: 'unlink' });
     const layout = resolveProjectVaultPaths(config, project);
     await removeCommonMountPath(layout.sharedMountPath);
     console.log(`Removed common mount for project “${project}”.`);

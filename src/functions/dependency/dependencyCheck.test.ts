@@ -15,13 +15,14 @@ vi.mock('../platform/shell.js', () => ({
 import { runScopedObsidianCommand } from '../../mcp/obsidianCommandRuntime.js';
 
 const baseConfig = appConfigSchema.parse({
-  folderStructure: {
-    attachments: 'i0',
-    noteLibrary: 'n0',
-    publish: 'p0',
-    projectScope: 'j0',
-    sharedScope: 'k0'
-  }
+  repoPrefix: 'obsidian-vault-',
+  commonProjectName: 'common',
+  commonConfigured: false,
+  copyFromCommon: [],
+  projectVaults: {},
+  github: { createRemotes: false, hostname: 'github.com' },
+  server: { host: '127.0.0.1', preferredPort: 57891 },
+  codex: { mcpServerNamePrefix: 'obsidian-notes', profileNamePrefix: '' }
 });
 
 describe('runScopedObsidianCommand vault scope', () => {
@@ -31,7 +32,7 @@ describe('runScopedObsidianCommand vault scope', () => {
       config: baseConfig,
       vaultName: 'obsidian-vault-alpha',
       command: 'read',
-      params: { path: 'n0/j0/a.md', vault: 'obsidian-vault-alpha' }
+      params: { path: 'Notes/a.md', vault: 'obsidian-vault-alpha' }
     });
     const args = runRequiredMock.mock.calls[0]?.[1] as string[];
     expect(args.filter(a => a.startsWith('vault='))).toEqual(['vault=obsidian-vault-alpha']);
@@ -43,7 +44,7 @@ describe('runScopedObsidianCommand vault scope', () => {
         config: baseConfig,
         vaultName: 'obsidian-vault-alpha',
         command: 'read',
-        params: { path: 'n0/j0/a.md', vault: 'other-vault' }
+        params: { path: 'Notes/a.md', vault: 'other-vault' }
       })
     ).rejects.toThrow(UserError);
 
@@ -52,7 +53,7 @@ describe('runScopedObsidianCommand vault scope', () => {
         config: baseConfig,
         vaultName: 'obsidian-vault-alpha',
         command: 'read',
-        params: { path: 'n0/j0/a.md', vault: 'other-vault' }
+        params: { path: 'Notes/a.md', vault: 'other-vault' }
       })
     ).rejects.toThrow(/not allowed/);
   });
@@ -63,7 +64,7 @@ describe('runScopedObsidianCommand vault scope', () => {
         config: baseConfig,
         vaultName: 'obsidian-vault-alpha',
         command: 'read',
-        params: { path: 'n0/j0/a.md' },
+        params: { path: 'Notes/a.md' },
         flags: ['vault=evil']
       })
     ).rejects.toThrow(/not allowed/);

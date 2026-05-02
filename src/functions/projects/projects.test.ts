@@ -3,20 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { appConfigSchema } from '../../config/config.js';
 import { formatGithubConfig, isGithubRemoteSyncConfigured } from './projects.js';
 
-const testFolders = {
-  attachments: 'i0',
-  noteLibrary: 'n0',
-  publish: 'p0',
-  projectScope: 'j0',
-  sharedScope: 'k0'
-};
-
 const minimal = {
   repoPrefix: 'obsidian-vault-',
   commonProjectName: 'common',
   commonConfigured: false,
-  folderStructure: testFolders,
-  copyFromCommon: [] as string[]
+  copyFromCommon: [] as string[],
+  projectVaults: {} as Record<string, string>,
+  github: { createRemotes: false, hostname: 'github.com' },
+  server: { host: '127.0.0.1' as const, preferredPort: 57891 },
+  codex: { mcpServerNamePrefix: 'obsidian-notes' as const, profileNamePrefix: '' }
 };
 
 describe('projects GitHub helpers', () => {
